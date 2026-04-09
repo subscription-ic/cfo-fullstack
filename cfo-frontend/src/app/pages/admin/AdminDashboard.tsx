@@ -1,0 +1,1316 @@
+import { useState } from "react";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "../../components/ui/card";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../../components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
+import { Badge } from "../../components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "../../components/ui/dialog";
+import { Textarea } from "../../components/ui/textarea";
+import {
+  Upload,
+  X,
+  Save,
+  FileText,
+  BarChart,
+  FileSpreadsheet,
+  Edit,
+  Trash2,
+  Plus,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Tag,
+} from "lucide-react";
+import { Progress } from "../../components/ui/progress";
+
+interface UploadedFile {
+  id: string;
+  file: File;
+  year: string;
+  quarter: string;
+}
+
+const currentYear = new Date().getFullYear();
+const YEARS = Array.from({ length: 6 }, (_, i) => (currentYear - i).toString());
+const QUARTERS = ["Q1", "Q2", "Q3", "Q4"];
+
+const REVIEW_QUARTERS = ["Q1 FY25", "Q4 FY24", "Q3 FY24", "Q2 FY24"];
+
+const mockActualQuestions = [
+  // Q1 FY25
+  {
+    id: "1",
+    period: "Q1 FY25",
+    question: "Walk us through the margin bridge this quarter and sustainability into Q2?",
+    answer: "Three main drivers: efficiency improvements from automation, premium mix shift, and pricing actions.",
+    answeredBy: "Jane Doe, CFO",
+    category: "Margin / Profitability",
+  },
+  {
+    id: "2",
+    period: "Q1 FY25",
+    question: "Your guidance implies deceleration in Q2 - what are the specific headwinds?",
+    answer: "Q2 has typical seasonal patterns, we're lapping a very strong Q2 last year.",
+    answeredBy: "John Smith, CEO",
+    category: "Guidance",
+  },
+  {
+    id: "3",
+    period: "Q1 FY25",
+    question: "Can you break out volume and price contribution to growth?",
+    answer: "Volume contributed 5.5 points, pricing 3 points. Both sustainable.",
+    answeredBy: "Jane Doe, CFO",
+    category: "Revenue / Growth",
+  },
+
+  // Q4 FY24
+  {
+    id: "4",
+    period: "Q4 FY24",
+    question: "How are you thinking about capital allocation for the rest of the year?",
+    answer: "Our priority remains investing in organic growth, followed by opportunistic share repurchases.",
+    answeredBy: "Jane Doe, CFO",
+    category: "Capital Allocation",
+  },
+  {
+    id: "5",
+    period: "Q4 FY24",
+    question: "What drove the higher than expected tax rate this quarter?",
+    answer: "There was a one-time discrete tax headwind related to our European restructuring efforts which will not repeat next year.",
+    answeredBy: "Jane Doe, CFO",
+    category: "Tax",
+  },
+  {
+    id: "6",
+    period: "Q4 FY24",
+    question: "Are you seeing any changes in consumer spending patterns?",
+    answer: "Consumers remain largely resilient, though we are seeing slight trade-down behavior in select lower-income cohorts.",
+    answeredBy: "John Smith, CEO",
+    category: "Macro / Consumer",
+  },
+
+  // Q3 FY24
+  {
+    id: "7",
+    period: "Q3 FY24",
+    question: "Can you provide an update on the progress of the new CRM rollout across the sales teams?",
+    answer: "We are currently 80% deployed and expect to finish the implementation ahead of schedule by next quarter.",
+    answeredBy: "Michael Johnson, COO",
+    category: "Operations",
+  },
+  {
+    id: "8",
+    period: "Q3 FY24",
+    question: "How much of the revenue beat was driven by FX movements vs organic volume?",
+    answer: "FX was a minor tailwind of roughly 1 point, the vast majority of the beat was driven by strong underlying volume in core markets.",
+    answeredBy: "Jane Doe, CFO",
+    category: "Revenue / Growth",
+  },
+
+  // Q2 FY24
+  {
+    id: "9",
+    period: "Q2 FY24",
+    question: "Supply chain disruptions were a major headwind last quarter. Have those issues fully resolved?",
+    answer: "We've made significant progress diversifying our suppliers. While freight costs remain elevated, we are no longer facing severe component shortages.",
+    answeredBy: "Michael Johnson, COO",
+    category: "Supply Chain",
+  },
+  {
+    id: "10",
+    period: "Q2 FY24",
+    question: "What is your outlook on competitive pricing dynamics given recent aggressive promotions from rivals?",
+    answer: "We are closely monitoring the market but believe our premium brand positioning isolates us from needing to participate in deep discounting.",
+    answeredBy: "John Smith, CEO",
+    category: "Competition",
+  }
+];
+
+const mockPredictedQuestions = [
+  {
+    id: "p1",
+    period: "Q1 FY25",
+    question: "How will the recent interest rate hikes impact loan growth targets?",
+    answer: "We've modeled a conservative 5% downside in loan origination volume but expect steady NIMs.",
+    category: "Macro / Interest Rates",
+    risk: "High",
+  },
+  {
+    id: "p2",
+    period: "Q1 FY25",
+    question: "Do you anticipate needing to increase loan loss reserves heavily in Q2?",
+    answer: "Our current coverage ratio is strong. We expect provisions to normalize rather than increase substantially.",
+    category: "Asset Quality",
+    risk: "Medium",
+  },
+  {
+    id: "p3",
+    period: "Q4 FY24",
+    question: "Can you comment on the expected tech spending for next fiscal year?",
+    answer: "Tech investments will continue but growth rate will moderate to low single digits.",
+    category: "OpEx",
+    risk: "Low",
+  }
+];
+
+interface ComparisonData {
+  id: string;
+  predictedQuestion: string;
+  wasAsked: boolean;
+  actualPhrasing: string;
+  similarity: number;
+  recommendedAnswer: string;
+  actualAnswer: string;
+  category: string;
+  feedback: string;
+}
+
+const comparisonData: ComparisonData[] = [
+  {
+    id: '1',
+    predictedQuestion: 'Can you walk through the key drivers of the 120 bps margin expansion this quarter?',
+    wasAsked: true,
+    actualPhrasing: 'Walk us through the margin bridge this quarter and sustainability into Q2?',
+    similarity: 92,
+    recommendedAnswer: '',
+    actualAnswer: '',
+    category: 'Margin / Profitability',
+    feedback: 'good-prediction'
+  },
+  {
+    id: '2',
+    predictedQuestion: 'What gives you confidence in the full-year revenue guidance?',
+    wasAsked: true,
+    actualPhrasing: 'Your guidance implies deceleration in Q2 - what are the specific headwinds?',
+    similarity: 78,
+    recommendedAnswer: '',
+    actualAnswer: '',
+    category: 'Guidance',
+    feedback: 'good-prediction'
+  },
+  {
+    id: '3',
+    predictedQuestion: 'How much of your revenue growth is coming from volume versus price?',
+    wasAsked: true,
+    actualPhrasing: 'Can you break out volume and price contribution to growth?',
+    similarity: 95,
+    recommendedAnswer: '',
+    actualAnswer: '',
+    category: 'Revenue / Growth',
+    feedback: 'good-prediction'
+  },
+  {
+    id: '4',
+    predictedQuestion: 'What specific actions are you taking to turn around international?',
+    wasAsked: true,
+    actualPhrasing: 'International remains weak - what\'s the turnaround plan and timeline?',
+    similarity: 88,
+    recommendedAnswer: '',
+    actualAnswer: '',
+    category: 'Region / Segment',
+    feedback: 'good-prediction'
+  },
+  {
+    id: '5',
+    predictedQuestion: 'Can you provide more color on working capital trends?',
+    wasAsked: false,
+    actualPhrasing: '',
+    similarity: 0,
+    recommendedAnswer: '',
+    actualAnswer: '',
+    category: 'Capital Allocation',
+    feedback: 'false-positive'
+  },
+  {
+    id: '6',
+    predictedQuestion: 'What are you seeing from competitors on pricing?',
+    wasAsked: true,
+    actualPhrasing: 'Any signs of irrational pricing or competitive pressure?',
+    similarity: 85,
+    recommendedAnswer: '',
+    actualAnswer: '',
+    category: 'Competition',
+    feedback: 'good-prediction'
+  },
+  {
+    id: '7',
+    predictedQuestion: 'Any update on the regulatory environment?',
+    wasAsked: false,
+    actualPhrasing: '',
+    similarity: 0,
+    recommendedAnswer: '',
+    actualAnswer: '',
+    category: 'Regulation / Risk',
+    feedback: 'false-positive'
+  },
+  {
+    id: '8',
+    predictedQuestion: '',
+    wasAsked: true,
+    actualPhrasing: 'Can you talk about your cloud migration progress and impact on margins?',
+    similarity: 0,
+    recommendedAnswer: '',
+    actualAnswer: '',
+    category: 'Technology',
+    feedback: 'missed-question'
+  }
+];
+
+
+export default function AdminDashboard() {
+  const [actualQuestions, setActualQuestions] = useState(mockActualQuestions);
+  const [editingQuestion, setEditingQuestion] = useState<any>(null);
+  const [isAddMode, setIsAddMode] = useState<boolean>(false);
+  const [activeReviewQuarter, setActiveReviewQuarter] = useState<string>(REVIEW_QUARTERS[0]);
+
+  const [predictedQuestions, setPredictedQuestions] = useState(mockPredictedQuestions);
+  const [editingPredictedQuestion, setEditingPredictedQuestion] = useState<any>(null);
+  const [isAddPredictedMode, setIsAddPredictedMode] = useState<boolean>(false);
+
+  const [comparisonState, setComparisonState] = useState(comparisonData);
+  const [editingComparison, setEditingComparison] = useState<ComparisonData | null>(null);
+
+  const [companyName, setCompanyName] = useState("");
+
+  // File state arrays
+  const [historicalPdfs, setHistoricalPdfs] = useState<UploadedFile[]>([]);
+  const [currentQuarterEc, setCurrentQuarterEc] = useState<UploadedFile[]>([]);
+  const [financialStats, setFinancialStats] = useState<UploadedFile[]>([]);
+  const [currentQuarterStats, setCurrentQuarterStats] = useState<
+    UploadedFile[]
+  >([]);
+
+  const handleFileUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: React.Dispatch<React.SetStateAction<UploadedFile[]>>,
+    currentFiles: UploadedFile[],
+  ) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files).map((file) => ({
+        id: Math.random().toString(36).substring(7),
+        file,
+        year: currentYear.toString(),
+        quarter: QUARTERS[0],
+      }));
+      setter([...currentFiles, ...newFiles]);
+    }
+    // reset input
+    e.target.value = "";
+  };
+
+  const removeFile = (
+    id: string,
+    setter: React.Dispatch<React.SetStateAction<UploadedFile[]>>,
+    currentFiles: UploadedFile[],
+  ) => {
+    setter(currentFiles.filter((f) => f.id !== id));
+  };
+
+  const updateFileMeta = (
+    id: string,
+    key: "year" | "quarter",
+    value: string,
+    setter: React.Dispatch<React.SetStateAction<UploadedFile[]>>,
+    currentFiles: UploadedFile[],
+  ) => {
+    setter(currentFiles.map((f) => (f.id === id ? { ...f, [key]: value } : f)));
+  };
+
+  const renderFileList = (
+    files: UploadedFile[],
+    setter: React.Dispatch<React.SetStateAction<UploadedFile[]>>,
+    icon: React.ReactNode,
+  ) => {
+    if (files.length === 0) return null;
+
+    return (
+      <div className="mt-4 space-y-3">
+        {files.map((fileObj) => (
+          <div
+            key={fileObj.id}
+            className="flex items-center gap-4 bg-slate-50 p-3 rounded-lg border border-slate-100"
+          >
+            <div className="flex-shrink-0 text-slate-400">{icon}</div>
+            <div className="flex-grow min-w-0">
+              <p className="text-sm font-medium text-slate-700 truncate">
+                {fileObj.file.name}
+              </p>
+              <p className="text-xs text-slate-500">
+                {(fileObj.file.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={fileObj.year}
+                onChange={(e) =>
+                  updateFileMeta(
+                    fileObj.id,
+                    "year",
+                    e.target.value,
+                    setter,
+                    files,
+                  )
+                }
+                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#ED232A] focus:border-[#ED232A]"
+              >
+                {YEARS.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={fileObj.quarter}
+                onChange={(e) =>
+                  updateFileMeta(
+                    fileObj.id,
+                    "quarter",
+                    e.target.value,
+                    setter,
+                    files,
+                  )
+                }
+                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#ED232A] focus:border-[#ED232A]"
+              >
+                {QUARTERS.map((q) => (
+                  <option key={q} value={q}>
+                    {q}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => removeFile(fileObj.id, setter, files)}
+                className="text-slate-400 hover:text-red-600 hover:bg-red-50 ml-2"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const handleSave = () => {
+    console.log("Saving Configuration:", {
+      companyName,
+      historicalPdfs,
+      currentQuarterEc,
+      financialStats,
+      currentQuarterStats,
+    });
+    alert(
+      "Documents configuration saved successfully! (Check console for mock output)",
+    );
+  };
+
+  const handleSaveQuestion = () => {
+    if (!editingQuestion) return;
+    if (isAddMode) {
+      setActualQuestions((prev) => [editingQuestion, ...prev]);
+    } else {
+      setActualQuestions((prev) =>
+        prev.map((q) => (q.id === editingQuestion.id ? editingQuestion : q)),
+      );
+    }
+    setEditingQuestion(null);
+    setIsAddMode(false);
+  };
+
+  const handleDeleteQuestion = () => {
+    if (!editingQuestion) return;
+    setActualQuestions((prev) =>
+      prev.filter((q) => q.id !== editingQuestion.id),
+    );
+    setEditingQuestion(null);
+    setIsAddMode(false);
+  };
+
+  const handleAddRecordClick = (period: string) => {
+    setIsAddMode(true);
+    setEditingQuestion({
+      id: Math.random().toString(36).substring(7),
+      period: period,
+      question: "",
+      answer: "",
+      answeredBy: "",
+      category: "",
+    });
+  };
+
+  const handleSaveComparison = () => {
+    if (!editingComparison) return;
+    setComparisonState(prev => 
+      prev.map(c => c.id === editingComparison.id ? editingComparison : c)
+    );
+    setEditingComparison(null);
+  };
+
+  const handleSavePredictedQuestion = () => {
+    if (!editingPredictedQuestion) return;
+    if (isAddPredictedMode) {
+      setPredictedQuestions((prev) => [editingPredictedQuestion, ...prev]);
+    } else {
+      setPredictedQuestions((prev) =>
+        prev.map((q) => (q.id === editingPredictedQuestion.id ? editingPredictedQuestion : q)),
+      );
+    }
+    setEditingPredictedQuestion(null);
+    setIsAddPredictedMode(false);
+  };
+
+  const handleDeletePredictedQuestion = () => {
+    if (!editingPredictedQuestion) return;
+    setPredictedQuestions((prev) =>
+      prev.filter((q) => q.id !== editingPredictedQuestion.id),
+    );
+    setEditingPredictedQuestion(null);
+    setIsAddPredictedMode(false);
+  };
+
+  const handleAddPredictedRecordClick = () => {
+    setIsAddPredictedMode(true);
+    setEditingPredictedQuestion({
+      id: Math.random().toString(36).substring(7),
+      question: "",
+      answer: "",
+      category: "",
+      risk: "Medium",
+    });
+  };
+
+  const isFormValid =
+    companyName.trim() !== "" &&
+    historicalPdfs.length > 0 &&
+    currentQuarterEc.length > 0 &&
+    financialStats.length > 0 &&
+    currentQuarterStats.length > 0;
+
+  return (
+    <div className="p-6 space-y-6 max-w-[1800px] mx-auto">
+      <div className="mb-8">
+        <h1 className="text-3xl font-semibold text-[#002850] mb-2">
+          Admin Panel
+        </h1>
+        <p className="text-slate-600">
+          Configure company details and upload relevant intelligence documents.
+        </p>
+      </div>
+
+      <Tabs defaultValue="generate" className="w-full">
+        <TabsList className="mb-10 flex w-full max-w-2xl bg-slate-200/80 p-2 rounded-2xl mx-auto shadow-inner">
+          <TabsTrigger
+            value="generate"
+            className="flex-1 rounded-xl py-4 text-lg font-medium text-slate-600 data-[state=active]:bg-[#002850] data-[state=active]:text-white data-[state=active]:shadow-lg transition-all"
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Upload className="w-5 h-5" />
+              Generate Q&A
+            </div>
+          </TabsTrigger>
+          <TabsTrigger
+            value="review"
+            className="flex-1 rounded-xl py-4 text-lg font-medium text-slate-600 data-[state=active]:bg-[#002850] data-[state=active]:text-white data-[state=active]:shadow-lg transition-all"
+          >
+            <div className="flex items-center justify-center gap-2">
+              <FileSpreadsheet className="w-5 h-5" />
+              Review Q&A
+            </div>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="review">
+          <div className="space-y-6">
+            <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200">
+              <span className="font-medium text-slate-700">Company:</span>
+              <Select defaultValue="hdfc">
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder="Select Company" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hdfc">HDFC Bank</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-xl text-[#8B1319]">
+                  Actual Questions Review
+                </CardTitle>
+                <CardDescription>
+                  Review the Q&A from the selected company's latest earnings
+                  call
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Tabs value={activeReviewQuarter} onValueChange={setActiveReviewQuarter}>
+                  <div className="flex justify-between items-center mb-4">
+                    <TabsList>
+                      {REVIEW_QUARTERS.map(qtr => (
+                        <TabsTrigger key={qtr} value={qtr}>{qtr}</TabsTrigger>
+                      ))}
+                    </TabsList>
+                    <Button onClick={() => handleAddRecordClick(activeReviewQuarter)} className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300">
+                      <Plus className="w-4 h-4 mr-2" /> Add Record
+                    </Button>
+                  </div>
+                  
+                  {REVIEW_QUARTERS.map(qtr => {
+                    const qtrQuestions = actualQuestions.filter(q => q.period === qtr);
+                    return (
+                      <TabsContent key={qtr} value={qtr} className="mt-0">
+                        <div className="border rounded-lg overflow-hidden">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="min-w-[250px]">Question</TableHead>
+                                <TableHead className="min-w-[300px]">Answer</TableHead>
+                                <TableHead className="w-[150px]">Answered By</TableHead>
+                                <TableHead className="w-[150px]">Category</TableHead>
+                                <TableHead className="w-[80px]">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {qtrQuestions.length > 0 ? (
+                                qtrQuestions.map((row) => (
+                                  <TableRow key={row.id}>
+                                    <TableCell className="text-sm font-medium">
+                                      <div className="max-w-[55ch] truncate" title={row.question}>{row.question}</div>
+                                    </TableCell>
+                                    <TableCell className="text-sm text-slate-600">
+                                      <div className="max-w-[67ch] truncate" title={row.answer}>{row.answer}</div>
+                                    </TableCell>
+                                    <TableCell className="text-sm">{row.answeredBy}</TableCell>
+                                    <TableCell>
+                                      <Badge variant="outline" className="text-xs">{row.category}</Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Button variant="ghost" size="sm" onClick={() => setEditingQuestion(row)}>
+                                        <Edit className="w-4 h-4 text-slate-500 hover:text-slate-700" />
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                ))
+                              ) : (
+                                <TableRow>
+                                  <TableCell colSpan={5} className="h-24 text-center text-slate-500">
+                                    No Q&A data available for {qtr}.
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </TabsContent>
+                    );
+                  })}
+                </Tabs>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-xl text-[#8B1319]">
+                  Predicted Questions Review
+                </CardTitle>
+                <CardDescription>
+                  Review the questions predicted for the selected company's upcoming earnings call
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between items-center mb-4">
+                  <div className="inline-flex h-10 items-center justify-center rounded-md bg-slate-100 p-1 text-slate-500">
+                    <div className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium bg-white text-slate-950 shadow-sm cursor-default select-none">
+                      Q2 FY25
+                    </div>
+                  </div>
+                  <Button onClick={handleAddPredictedRecordClick} className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300">
+                    <Plus className="w-4 h-4 mr-2" /> Add Record
+                  </Button>
+                </div>
+                
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="min-w-[250px]">Question</TableHead>
+                        <TableHead className="min-w-[300px]">Answer</TableHead>
+                        <TableHead className="w-[100px]">Risk</TableHead>
+                        <TableHead className="w-[150px]">Category</TableHead>
+                        <TableHead className="w-[80px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {predictedQuestions.length > 0 ? (
+                        predictedQuestions.map((row) => (
+                          <TableRow key={row.id}>
+                            <TableCell className="text-sm font-medium">
+                              <div className="max-w-[55ch] truncate" title={row.question}>{row.question}</div>
+                            </TableCell>
+                            <TableCell className="text-sm text-slate-600">
+                              <div className="max-w-[67ch] truncate" title={row.answer}>{row.answer}</div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={`text-xs ${row.risk === 'High' ? 'bg-red-50 text-red-700 border-red-200' : row.risk === 'Medium' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+                                {row.risk}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">{row.category}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Button variant="ghost" size="sm" onClick={() => setEditingPredictedQuestion(row)}>
+                                <Edit className="w-4 h-4 text-slate-500 hover:text-slate-700" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={5} className="h-24 text-center text-slate-500">
+                            No predicted questions available.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-xl text-[#8B1319]">
+                  Predicted vs Actual Questions Comparison
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="space-y-4">
+                    <div className="inline-flex h-10 items-center justify-center rounded-md bg-slate-100 p-1 text-slate-500">
+                      <div className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium bg-white text-slate-950 shadow-sm cursor-default select-none">
+                        Q2 FY25
+                      </div>
+                    </div>
+                    <Tabs defaultValue="all">
+                      <TabsList>
+                        <TabsTrigger value="all">All ({comparisonState.length})</TabsTrigger>
+                        <TabsTrigger value="correct">Correct Predictions ({comparisonState.filter(d => d.wasAsked && d.predictedQuestion).length})</TabsTrigger>
+                        <TabsTrigger value="missed">Missed ({comparisonState.filter(d => d.feedback === 'missed-question').length})</TabsTrigger>
+                        <TabsTrigger value="false">False Positives ({comparisonState.filter(d => d.feedback === 'false-positive').length})</TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  </div>
+                  <Button className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 mt-[52px]">
+                    Calculate Similarity
+                  </Button>
+                </div>
+
+                <div className="border rounded-lg overflow-hidden mt-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[50px]">Status</TableHead>
+                        <TableHead className="min-w-[300px]">Predicted Question</TableHead>
+                        <TableHead className="min-w-[300px]">Actual Question</TableHead>
+                        <TableHead className="w-[150px]">Similarity</TableHead>
+                        <TableHead className="w-[80px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {comparisonState.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>
+                            {row.wasAsked && row.predictedQuestion ? (
+                              <CheckCircle2 className="w-5 h-5 text-green-600" />
+                            ) : row.wasAsked && !row.predictedQuestion ? (
+                              <XCircle className="w-5 h-5 text-red-600" />
+                            ) : (
+                              <AlertCircle className="w-5 h-5 text-amber-600" />
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {row.predictedQuestion || <span className="text-slate-400 italic">Not predicted</span>}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {row.actualPhrasing || <span className="text-slate-400 italic">Not asked</span>}
+                          </TableCell>
+                          <TableCell>
+                            {row.similarity > 0 ? (
+                              <div className="flex items-center gap-2">
+                                <Progress value={row.similarity} className="w-12 h-2" />
+                                <span className="text-sm font-medium">{row.similarity}%</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-sm">N/A</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="sm" onClick={() => setEditingComparison(row)}>
+                              <Edit className="w-4 h-4 text-slate-500 hover:text-slate-700" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Dialog
+            open={!!editingComparison}
+            onOpenChange={(open) => {
+              if (!open) {
+                setEditingComparison(null);
+              }
+            }}
+          >
+            <DialogContent className="!max-w-[90vw] w-[90vw] h-[78vh] max-h-[85vh] overflow-y-auto overflow-x-hidden">
+              <DialogHeader className="flex flex-row items-center justify-between pr-8 mt-2">
+                <div className="space-y-1">
+                  <DialogTitle>Edit Comparison Record</DialogTitle>
+                  <DialogDescription>
+                    Modify the predicted vs actual question comparison details.
+                  </DialogDescription>
+                </div>
+              </DialogHeader>
+              
+              {editingComparison && (
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Predicted Question</Label>
+                    <Textarea 
+                      value={editingComparison.predictedQuestion}
+                      onChange={(e) => setEditingComparison({...editingComparison, predictedQuestion: e.target.value})}
+                      className="min-h-[80px] break-words [overflow-wrap:anywhere]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Actual Question</Label>
+                    <Textarea 
+                      value={editingComparison.actualPhrasing}
+                      onChange={(e) => setEditingComparison({...editingComparison, actualPhrasing: e.target.value})}
+                      className="min-h-[80px] break-words [overflow-wrap:anywhere]"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Similarity (%)</Label>
+                      <Input 
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={editingComparison.similarity}
+                        onChange={(e) => setEditingComparison({...editingComparison, similarity: parseInt(e.target.value) || 0})}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Was Asked</Label>
+                      <Select 
+                        value={editingComparison.wasAsked ? "yes" : "no"}
+                        onValueChange={(val) => setEditingComparison({...editingComparison, wasAsked: val === "yes"})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="yes">Yes</SelectItem>
+                          <SelectItem value="no">No</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingComparison(null)}>Cancel</Button>
+                <Button className="bg-[#ED232A] hover:bg-[#C11B22] text-white" onClick={handleSaveComparison}>Save Changes</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={!!editingQuestion}
+            onOpenChange={(open) => {
+              if (!open) {
+                setEditingQuestion(null);
+                setIsAddMode(false);
+              }
+            }}
+          >
+            <DialogContent className="!max-w-[90vw] w-[90vw] h-[78vh] max-h-[85vh] overflow-y-auto overflow-x-hidden">
+              <DialogHeader className="flex flex-row items-center justify-between pr-8 mt-2">
+                <div className="space-y-1">
+                  <DialogTitle>{isAddMode ? "Add a Record" : "Edit Q&A"}</DialogTitle>
+                  <DialogDescription>
+                    {isAddMode ? "Manually add a new actual question and answer captured from the call." : "Modify the actual question and answer captured from the call."}
+                  </DialogDescription>
+                </div>
+                {!isAddMode && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleDeleteQuestion}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 mt-0"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" /> Delete Row
+                  </Button>
+                )}
+              </DialogHeader>
+
+              {editingQuestion && (
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Question</Label>
+                    <Textarea
+                      value={editingQuestion.question}
+                      onChange={(e) =>
+                        setEditingQuestion({
+                          ...editingQuestion,
+                          question: e.target.value,
+                        })
+                      }
+                      className="min-h-[80px] break-words [overflow-wrap:anywhere]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Answer</Label>
+                    <Textarea
+                      value={editingQuestion.answer}
+                      onChange={(e) =>
+                        setEditingQuestion({
+                          ...editingQuestion,
+                          answer: e.target.value,
+                        })
+                      }
+                      className="min-h-[220px] break-words [overflow-wrap:anywhere]"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Answered By</Label>
+                      <Input
+                        value={editingQuestion.answeredBy}
+                        onChange={(e) =>
+                          setEditingQuestion({
+                            ...editingQuestion,
+                            answeredBy: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Category</Label>
+                      <Input
+                        value={editingQuestion.category}
+                        onChange={(e) =>
+                          setEditingQuestion({
+                            ...editingQuestion,
+                            category: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => { setEditingQuestion(null); setIsAddMode(false); }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveQuestion}
+                  className="bg-[#ED232A] hover:bg-[#C11B22] text-white"
+                >
+                  {isAddMode ? "Add Record" : "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={!!editingPredictedQuestion}
+            onOpenChange={(open) => {
+              if (!open) {
+                setEditingPredictedQuestion(null);
+                setIsAddPredictedMode(false);
+              }
+            }}
+          >
+            <DialogContent className="!max-w-[90vw] w-[90vw] h-[78vh] max-h-[85vh] overflow-y-auto overflow-x-hidden">
+              <DialogHeader className="flex flex-row items-center justify-between pr-8 mt-2">
+                <div className="space-y-1">
+                  <DialogTitle>{isAddPredictedMode ? "Add Predicted Question" : "Edit Predicted Question"}</DialogTitle>
+                  <DialogDescription>
+                    {isAddPredictedMode ? "Manually add a predicted question for the upcoming call." : "Modify the predicted question."}
+                  </DialogDescription>
+                </div>
+                {!isAddPredictedMode && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleDeletePredictedQuestion}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 mt-0"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" /> Delete Row
+                  </Button>
+                )}
+              </DialogHeader>
+
+              {editingPredictedQuestion && (
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Question</Label>
+                    <Textarea
+                      value={editingPredictedQuestion.question}
+                      onChange={(e) =>
+                        setEditingPredictedQuestion({
+                          ...editingPredictedQuestion,
+                          question: e.target.value,
+                        })
+                      }
+                      className="min-h-[80px] break-words [overflow-wrap:anywhere]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Answer (if provided)</Label>
+                    <Textarea
+                      value={editingPredictedQuestion.answer}
+                      onChange={(e) =>
+                        setEditingPredictedQuestion({
+                          ...editingPredictedQuestion,
+                          answer: e.target.value,
+                        })
+                      }
+                      className="min-h-[220px] break-words [overflow-wrap:anywhere]"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Risk</Label>
+                      <Select
+                        value={editingPredictedQuestion.risk}
+                        onValueChange={(val) => 
+                          setEditingPredictedQuestion({
+                            ...editingPredictedQuestion,
+                            risk: val,
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Risk" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="High">High</SelectItem>
+                          <SelectItem value="Medium">Medium</SelectItem>
+                          <SelectItem value="Low">Low</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Category</Label>
+                      <Input
+                        value={editingPredictedQuestion.category}
+                        onChange={(e) =>
+                          setEditingPredictedQuestion({
+                            ...editingPredictedQuestion,
+                            category: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => { setEditingPredictedQuestion(null); setIsAddPredictedMode(false); }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSavePredictedQuestion}
+                  className="bg-[#ED232A] hover:bg-[#C11B22] text-white"
+                >
+                  {isAddPredictedMode ? "Add Record" : "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
+
+        <TabsContent value="generate">
+          <div className="space-y-6">
+            {/* Section 1: Company Name */}
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-xl text-[#8B1319]">
+                  Company Profile
+                </CardTitle>
+                <CardDescription>
+                  Enter the target company name for analysis
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-w-md">
+                  <Label htmlFor="companyName">Company Name</Label>
+                  <Input
+                    id="companyName"
+                    placeholder="e.g. Apple Inc, Microsoft, etc."
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className="focus:border-[#ED232A] focus:ring-[#ED232A]"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Section 2: Historical Earnings Call PDFs */}
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl text-[#8B1319]">
+                  <FileText className="h-5 w-5" />
+                  Historical Earnings Call Transcripts
+                </CardTitle>
+                <CardDescription>
+                  Upload historical PDFs and assign them to the correct year and
+                  quarter
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 bg-slate-50/50 hover:bg-slate-50 transition-colors text-center">
+                  <Input
+                    type="file"
+                    id="upload-historical"
+                    multiple
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleFileUpload(e, setHistoricalPdfs, historicalPdfs)
+                    }
+                  />
+                  <Label
+                    htmlFor="upload-historical"
+                    className="cursor-pointer flex flex-col items-center"
+                  >
+                    <div className="h-12 w-12 rounded-full bg-[#ED232A]/10 flex items-center justify-center mb-4">
+                      <Upload className="h-6 w-6 text-[#ED232A]" />
+                    </div>
+                    <span className="font-medium text-[#8B1319]">
+                      Click to browse files
+                    </span>
+                    <span className="text-sm text-slate-500 mt-1">
+                      or drag and drop PDF documents here
+                    </span>
+                  </Label>
+                </div>
+                {renderFileList(
+                  historicalPdfs,
+                  setHistoricalPdfs,
+                  <FileText className="h-5 w-5" />,
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Section 2.5: Current Quarter Earnings Call */}
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl text-[#8B1319]">
+                  <FileText className="h-5 w-5" />
+                  Current Quarter Earnings Call
+                </CardTitle>
+                <CardDescription>
+                  Upload the current quarter earnings call transcript
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 bg-slate-50/50 hover:bg-slate-50 transition-colors text-center">
+                  <Input
+                    type="file"
+                    id="upload-current-ec"
+                    multiple
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleFileUpload(e, setCurrentQuarterEc, currentQuarterEc)
+                    }
+                  />
+                  <Label
+                    htmlFor="upload-current-ec"
+                    className="cursor-pointer flex flex-col items-center"
+                  >
+                    <div className="h-12 w-12 rounded-full bg-[#ED232A]/10 flex items-center justify-center mb-4">
+                      <Upload className="h-6 w-6 text-[#ED232A]" />
+                    </div>
+                    <span className="font-medium text-[#8B1319]">
+                      Click to browse files
+                    </span>
+                    <span className="text-sm text-slate-500 mt-1">
+                      or drag and drop PDF documents here
+                    </span>
+                  </Label>
+                </div>
+                {renderFileList(
+                  currentQuarterEc,
+                  setCurrentQuarterEc,
+                  <FileText className="h-5 w-5" />,
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Section 3: Financial Statement PDFs */}
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl text-[#8B1319]">
+                  <BarChart className="h-5 w-5" />
+                  Financial Statements
+                </CardTitle>
+                <CardDescription>
+                  Upload supplementary financial statements and proxy materials
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 bg-slate-50/50 hover:bg-slate-50 transition-colors text-center">
+                  <Input
+                    type="file"
+                    id="upload-financial"
+                    multiple
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleFileUpload(e, setFinancialStats, financialStats)
+                    }
+                  />
+                  <Label
+                    htmlFor="upload-financial"
+                    className="cursor-pointer flex flex-col items-center"
+                  >
+                    <div className="h-12 w-12 rounded-full bg-[#ED232A]/10 flex items-center justify-center mb-4">
+                      <Upload className="h-6 w-6 text-[#ED232A]" />
+                    </div>
+                    <span className="font-medium text-[#8B1319]">
+                      Click to browse files
+                    </span>
+                    <span className="text-sm text-slate-500 mt-1">
+                      or drag and drop PDF documents here
+                    </span>
+                  </Label>
+                </div>
+                {renderFileList(
+                  financialStats,
+                  setFinancialStats,
+                  <BarChart className="h-5 w-5" />,
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Section 4: Current Quarter Financial Statements */}
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl text-[#8B1319]">
+                  <FileSpreadsheet className="h-5 w-5" />
+                  Current Quarter Financial Statements
+                </CardTitle>
+                <CardDescription>
+                  Upload the target earnings quarter reporting materials
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 bg-slate-50/50 hover:bg-slate-50 transition-colors text-center">
+                  <Input
+                    type="file"
+                    id="upload-current"
+                    multiple
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleFileUpload(
+                        e,
+                        setCurrentQuarterStats,
+                        currentQuarterStats,
+                      )
+                    }
+                  />
+                  <Label
+                    htmlFor="upload-current"
+                    className="cursor-pointer flex flex-col items-center"
+                  >
+                    <div className="h-12 w-12 rounded-full bg-[#ED232A]/10 flex items-center justify-center mb-4">
+                      <Upload className="h-6 w-6 text-[#ED232A]" />
+                    </div>
+                    <span className="font-medium text-[#8B1319]">
+                      Click to browse files
+                    </span>
+                    <span className="text-sm text-slate-500 mt-1">
+                      or drag and drop PDF documents here
+                    </span>
+                  </Label>
+                </div>
+                {renderFileList(
+                  currentQuarterStats,
+                  setCurrentQuarterStats,
+                  <FileSpreadsheet className="h-5 w-5" />,
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Action Bar */}
+            <div className="flex justify-end pt-4 mb-20">
+              <Button
+                onClick={handleSave}
+                disabled={!isFormValid}
+                className="bg-[#ED232A] hover:bg-[#C11B22] text-white px-8 py-6 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all font-medium disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+              >
+                <Save className="h-5 w-5 mr-2" />
+                Submit and Generate Q&A
+              </Button>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

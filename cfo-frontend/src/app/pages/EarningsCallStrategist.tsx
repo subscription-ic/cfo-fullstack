@@ -250,7 +250,7 @@ export default function EarningsCallStrategist() {
                   <Input
                     value={newCustomQuestion}
                     onChange={(e) => setNewCustomQuestion(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAddCustomQuestion()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddCustomQuestion()}
                     placeholder="Type your custom question here..."
                     className="flex-1 border-[#ED232A]/50 focus:border-[#ED232A]"
                   />

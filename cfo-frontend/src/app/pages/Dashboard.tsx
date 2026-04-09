@@ -1,14 +1,26 @@
 import { useNavigate } from 'react-router';
+import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { BarChart3, Sparkles, LineChart, ArrowRight, Target } from 'lucide-react';
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
+        <div className="flex justify-end mb-4">
+          {isAdmin && (
+            <Button 
+              onClick={() => navigate('/admin')}
+              className="bg-[#ED232A] hover:bg-[#C11B22] text-white"
+            >
+              Go to Admin Panel
+            </Button>
+          )}
+        </div>
         <div className="mb-12 text-center">
           <h1 className="text-4xl font-semibold text-[#8B1319] mb-3">
             Earnings Call Companion

@@ -8,6 +8,7 @@ import AdminLayout from "./layouts/AdminLayout";
 import QuarterlyIntelligenceHub from "./pages/cfo/QuarterlyIntelligenceHub";
 import EarningsCallSimulator from "./pages/cfo/EarningsCallSimulator";
 import PredictionVsActual from "./pages/admin/PredictionVsActual";
+import AdminDashboard from "./pages/admin/AdminDashboard";
 import NotFound from "./pages/NotFound";
 
 export const router = createBrowserRouter([
@@ -47,7 +48,7 @@ export const router = createBrowserRouter([
     path: "/admin",
     element: <AdminLayout />,
     children: [
-      { index: true, element: <PredictionVsActual /> },
+      { index: true, element: <AdminDashboard /> },
     ],
   },
   {

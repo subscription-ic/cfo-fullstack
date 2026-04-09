@@ -13,6 +13,11 @@ export default function Login() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (username.toLowerCase() === 'admin') {
+      localStorage.setItem('isAdmin', 'true');
+    } else {
+      localStorage.removeItem('isAdmin');
+    }
     // Simple authentication - navigate to dashboard
     navigate('/dashboard');
   };
