@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -54,6 +54,7 @@ import {
   XCircle,
   AlertCircle,
   Tag,
+  UserPlus,
 } from "lucide-react";
 import { Progress } from "../../components/ui/progress";
 
@@ -291,11 +292,185 @@ const comparisonData: ComparisonData[] = [
 ];
 
 
+function DeleteCompanyTab({ companies, onDeleted }: { companies: string[], onDeleted: (name: string) => void }) {
+  const [selectedCompany, setSelectedCompany] = useState<string>("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const handleDelete = async () => {
+    if (!selectedCompany) return;
+    if (!window.confirm(`Are you sure you want to PERMANENTLY delete "${selectedCompany}" and ALL related earnings calls, questions, and comparisons? This cannot be undone.`)) return;
+
+    setIsDeleting(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`http://localhost:8000/api/companies/${encodeURIComponent(selectedCompany)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to delete company");
+      }
+      const data = await res.json();
+      setMessage({ type: "success", text: `"${data.deleted}" and all related records have been permanently deleted.` });
+      onDeleted(selectedCompany);
+      setSelectedCompany("");
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* Gradient header */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-700 via-red-800 to-red-950 p-8 text-white shadow-xl">
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{ backgroundImage: "radial-gradient(circle at 80% 20%, #fff 1px, transparent 1px)", backgroundSize: "24px 24px" }}
+        />
+        <div className="relative z-10 flex items-start gap-5">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 shadow-inner">
+            <Trash2 className="h-7 w-7 text-white" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Delete Company</h2>
+            <p className="mt-1 text-red-200 text-sm leading-relaxed">
+              Permanently remove a company and every record associated with it — earnings calls, actual Q&amp;A, predicted questions, and comparison data.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Danger zone card */}
+      <Card className="border-red-200 shadow-md overflow-hidden">
+        <div className="h-1 w-full bg-gradient-to-r from-red-500 via-red-700 to-red-500" />
+        <CardContent className="pt-6 pb-8 px-6 space-y-6">
+
+          {/* Warning banner */}
+          <div className="flex gap-3 rounded-xl bg-red-50 border border-red-200 p-4">
+            <div className="text-red-600 text-xl mt-0.5">⚠️</div>
+            <div>
+              <p className="font-semibold text-red-800 text-sm">Irreversible Action</p>
+              <p className="text-red-600 text-xs mt-0.5 leading-relaxed">
+                All earnings calls, actual questions, predicted questions, and comparison records linked to this company will be <strong>permanently erased</strong> from the database. There is no undo.
+              </p>
+            </div>
+          </div>
+
+          {/* Company selector */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-slate-700">Select Company to Delete</Label>
+            <Select value={selectedCompany} onValueChange={setSelectedCompany}>
+              <SelectTrigger className="w-full h-11 border-slate-300 rounded-lg">
+                <SelectValue placeholder="Choose a company from the database..." />
+              </SelectTrigger>
+              <SelectContent>
+                {companies.length > 0 ? (
+                  companies.map(c => (
+                    <SelectItem key={c} value={c}>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-red-500" />
+                        {c}
+                      </div>
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="none" disabled>No companies in database</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {selectedCompany && (
+              <p className="text-xs text-slate-500 mt-1 pl-1">
+                You are about to delete: <span className="font-semibold text-red-700">{selectedCompany}</span>
+              </p>
+            )}
+          </div>
+
+          {/* Feedback message */}
+          {message && (
+            <div className={`flex items-start gap-3 p-4 rounded-xl text-sm border ${
+              message.type === "success"
+                ? "bg-green-50 text-green-800 border-green-200"
+                : "bg-red-50 text-red-800 border-red-200"
+            }`}>
+              <span className="text-base mt-0.5">{message.type === "success" ? "✅" : "❌"}</span>
+              <span>{message.text}</span>
+            </div>
+          )}
+
+          {/* Delete button */}
+          <Button
+            onClick={handleDelete}
+            disabled={!selectedCompany || isDeleting}
+            className="w-full h-11 bg-red-700 hover:bg-red-800 active:bg-red-900 text-white font-semibold rounded-lg shadow-md transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isDeleting ? (
+              <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" /> Deleting...</>
+            ) : (
+              <><Trash2 className="w-4 h-4 mr-2" /> Delete {selectedCompany || "Company"} Permanently</>
+            )}
+          </Button>
+
+          {!selectedCompany && (
+            <p className="text-center text-xs text-slate-400">Select a company above to enable deletion.</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+
 export default function AdminDashboard() {
-  const [actualQuestions, setActualQuestions] = useState(mockActualQuestions);
+  const [actualQuestions, setActualQuestions] = useState<any[]>([]);
+  const [actualQuestionsLoading, setActualQuestionsLoading] = useState(false);
+  const [availableReviewQuarters, setAvailableReviewQuarters] = useState<string[]>([]);
+  const [activeReviewQuarter, setActiveReviewQuarter] = useState<string>("");
   const [editingQuestion, setEditingQuestion] = useState<any>(null);
   const [isAddMode, setIsAddMode] = useState<boolean>(false);
-  const [activeReviewQuarter, setActiveReviewQuarter] = useState<string>(REVIEW_QUARTERS[0]);
+  
+  const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
+  const [reviewCompany, setReviewCompany] = useState<string>("");
+
+  const fetchCompanies = () => {
+    fetch("http://localhost:8000/api/companies")
+      .then(res => res.json())
+      .then(data => {
+        if (data.companies) {
+          setAvailableCompanies(data.companies);
+        }
+      })
+      .catch(console.error);
+  };
+
+  useEffect(() => {
+    fetchCompanies();
+  }, []);
+
+  useEffect(() => {
+    if (!reviewCompany) return;
+    setActualQuestionsLoading(true);
+    fetch(`http://localhost:8000/api/actual-questions?company=${encodeURIComponent(reviewCompany)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.data) {
+          setActualQuestions(data.data);
+          
+          const periods = Array.from(new Set(data.data.map((q: any) => q.period))) as string[];
+          setAvailableReviewQuarters(periods);
+          
+          if (periods.length > 0) {
+            setActiveReviewQuarter(periods[0]);
+          } else {
+            setActiveReviewQuarter("");
+          }
+        }
+      })
+      .catch((err) => console.error("Failed to fetch actual questions:", err))
+      .finally(() => setActualQuestionsLoading(false));
+  }, [reviewCompany]);
 
   const [predictedQuestions, setPredictedQuestions] = useState(mockPredictedQuestions);
   const [editingPredictedQuestion, setEditingPredictedQuestion] = useState<any>(null);
@@ -305,6 +480,54 @@ export default function AdminDashboard() {
   const [editingComparison, setEditingComparison] = useState<ComparisonData | null>(null);
 
   const [companyName, setCompanyName] = useState("");
+
+  // Upload Processing State
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState("");
+
+  // User Management State
+  const [userEmail, setUserEmail] = useState("");
+  const [userPassword, setUserPassword] = useState("");
+  const [userFirstName, setUserFirstName] = useState("");
+  const [userLastName, setUserLastName] = useState("");
+  const [userRole, setUserRole] = useState("user");
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [userMessage, setUserMessage] = useState("");
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreatingUser(true);
+    setUserMessage("");
+    try {
+      const resp = await fetch("http://localhost:8000/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: userEmail,
+          password: userPassword,
+          first_name: userFirstName,
+          last_name: userLastName,
+          role: userRole,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.detail || "Failed to create user");
+      }
+      setUserMessage("User created successfully!");
+      setUserEmail("");
+      setUserPassword("");
+      setUserFirstName("");
+      setUserLastName("");
+      setUserRole("user");
+      // Hide message after 5s
+      setTimeout(() => setUserMessage(""), 5000);
+    } catch (err: any) {
+      setUserMessage(err.message);
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
 
   // File state arrays
   const [historicalPdfs, setHistoricalPdfs] = useState<UploadedFile[]>([]);
@@ -427,39 +650,148 @@ export default function AdminDashboard() {
     );
   };
 
-  const handleSave = () => {
-    console.log("Saving Configuration:", {
-      companyName,
-      historicalPdfs,
-      currentQuarterEc,
-      financialStats,
-      currentQuarterStats,
-    });
-    alert(
-      "Documents configuration saved successfully! (Check console for mock output)",
-    );
+  const handleSave = async () => {
+    if (historicalPdfs.length === 0) {
+      alert("Please upload at least one historical PDF to process.");
+      return;
+    }
+    
+    setIsProcessing(true);
+
+    const uploadAndPoll = (fileObj: UploadedFile, index: number, total: number): Promise<void> => {
+      return new Promise(async (resolve, reject) => {
+        try {
+          setProcessingMessage(`[${index + 1}/${total}] Uploading ${fileObj.file.name}...`);
+
+          const formData = new FormData();
+          formData.append("file", fileObj.file);
+          formData.append("company", companyName);
+          formData.append("year", fileObj.year);
+          formData.append("quarter", fileObj.quarter);
+
+          const response = await fetch("http://localhost:8000/api/upload/historical", {
+            method: "POST",
+            body: formData
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || "Failed to start extraction");
+
+          const taskId = data.task_id;
+
+          // Poll until this file is done
+          const pollInterval = setInterval(async () => {
+            try {
+              const statusRes = await fetch(`http://localhost:8000/api/tasks/${taskId}`);
+              const statusData = await statusRes.json();
+              if (statusRes.ok) {
+                setProcessingMessage(`[${index + 1}/${total}] ${fileObj.file.name}: ${statusData.status}`);
+
+                if (statusData.status === "COMPLETE") {
+                  clearInterval(pollInterval);
+                  resolve();
+                } else if (statusData.status.startsWith("ERROR")) {
+                  clearInterval(pollInterval);
+                  reject(new Error(`${fileObj.file.name}: ${statusData.status}`));
+                }
+              }
+            } catch (err) {
+              console.error("Polling error", err);
+            }
+          }, 2000);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    };
+
+    try {
+      const total = historicalPdfs.length;
+      for (let i = 0; i < total; i++) {
+        await uploadAndPoll(historicalPdfs[i], i, total);
+      }
+      setProcessingMessage(`All ${total} PDF${total > 1 ? "s" : ""} processed successfully! Actual questions updated.`);
+      setTimeout(() => setProcessingMessage(""), 5000);
+    } catch (err: any) {
+      alert("Processing failed: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const handleSaveQuestion = () => {
+  const handleSaveQuestion = async () => {
+    if (!editingQuestion) return;
+    try {
+      if (isAddMode) {
+        const payload = {
+          company_name: reviewCompany,
+          period: editingQuestion.period,
+          question: editingQuestion.question || "",
+          questionTopics: editingQuestion.questionTopics || "",
+          answer: editingQuestion.answer || "",
+          answerSummary: editingQuestion.answerSummary || "",
+          keyPoints: editingQuestion.keyPoints || "",
+          answeredBy: editingQuestion.answeredBy || "",
+          category: editingQuestion.category || "General"
+        };
+        const res = await fetch("http://localhost:8000/api/actual-questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Failed to add question");
+        const newRecord = await res.json();
+        setActualQuestions((prev) => [newRecord, ...prev]);
+      } else {
+        const payload = {
+          question: editingQuestion.question,
+          questionTopics: editingQuestion.questionTopics,
+          answer: editingQuestion.answer,
+          answerSummary: editingQuestion.answerSummary,
+          keyPoints: editingQuestion.keyPoints,
+          answeredBy: editingQuestion.answeredBy,
+          category: editingQuestion.category
+        };
+        const res = await fetch(`http://localhost:8000/api/actual-questions/${editingQuestion.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Failed to update question");
+        
+        setActualQuestions((prev) =>
+          prev.map((q) => (q.id === editingQuestion.id ? { ...q, ...payload } : q)),
+        );
+      }
+      setEditingQuestion(null);
+      setIsAddMode(false);
+    } catch (err: any) {
+      alert("Error saving: " + err.message);
+    }
+  };
+
+  const handleDeleteQuestion = async () => {
     if (!editingQuestion) return;
     if (isAddMode) {
-      setActualQuestions((prev) => [editingQuestion, ...prev]);
-    } else {
-      setActualQuestions((prev) =>
-        prev.map((q) => (q.id === editingQuestion.id ? editingQuestion : q)),
-      );
+      setEditingQuestion(null);
+      setIsAddMode(false);
+      return;
     }
-    setEditingQuestion(null);
-    setIsAddMode(false);
-  };
-
-  const handleDeleteQuestion = () => {
-    if (!editingQuestion) return;
-    setActualQuestions((prev) =>
-      prev.filter((q) => q.id !== editingQuestion.id),
-    );
-    setEditingQuestion(null);
-    setIsAddMode(false);
+    if (!window.confirm("Are you sure you want to delete this actual question permanently?")) return;
+    
+    try {
+      const res = await fetch(`http://localhost:8000/api/actual-questions/${editingQuestion.id}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw new Error("Failed to delete question");
+      setActualQuestions((prev) =>
+        prev.filter((q) => q.id !== editingQuestion.id),
+      );
+      setEditingQuestion(null);
+      setIsAddMode(false);
+    } catch (err: any) {
+      alert("Error deleting: " + err.message);
+    }
   };
 
   const handleAddRecordClick = (period: string) => {
@@ -468,7 +800,10 @@ export default function AdminDashboard() {
       id: Math.random().toString(36).substring(7),
       period: period,
       question: "",
+      questionTopics: "",
       answer: "",
+      answerSummary: "",
+      keyPoints: "",
       answeredBy: "",
       category: "",
     });
@@ -517,10 +852,7 @@ export default function AdminDashboard() {
 
   const isFormValid =
     companyName.trim() !== "" &&
-    historicalPdfs.length > 0 &&
-    currentQuarterEc.length > 0 &&
-    financialStats.length > 0 &&
-    currentQuarterStats.length > 0;
+    historicalPdfs.length > 0;
 
   return (
     <div className="p-6 space-y-6 max-w-[1800px] mx-auto">
@@ -533,38 +865,149 @@ export default function AdminDashboard() {
         </p>
       </div>
 
-      <Tabs defaultValue="generate" className="w-full">
-        <TabsList className="mb-10 flex w-full max-w-2xl bg-slate-200/80 p-2 rounded-2xl mx-auto shadow-inner">
+      <Tabs defaultValue="generate" className="w-full" onValueChange={(tab) => { if (tab === "review" || tab === "delete-company") fetchCompanies(); }}>
+        <TabsList className="mb-10 grid grid-cols-4 w-full gap-3 bg-transparent p-0 h-auto">
           <TabsTrigger
             value="generate"
-            className="flex-1 rounded-xl py-4 text-lg font-medium text-slate-600 data-[state=active]:bg-[#002850] data-[state=active]:text-white data-[state=active]:shadow-lg transition-all"
+            className="group relative flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#002850]/30 data-[state=active]:border-[#002850] data-[state=active]:bg-[#002850] data-[state=active]:shadow-lg data-[state=active]:shadow-[#002850]/20 data-[state=active]:scale-[1.02]"
           >
-            <div className="flex items-center justify-center gap-2">
-              <Upload className="w-5 h-5" />
-              Generate Q&A
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 group-data-[state=active]:bg-white/15 transition-colors">
+              <Upload className="w-5 h-5 text-slate-500 group-data-[state=active]:text-white" />
             </div>
+            <span className="text-sm font-semibold text-slate-600 group-data-[state=active]:text-white">Generate Q&amp;A</span>
+            <span className="text-[10px] text-slate-400 group-data-[state=active]:text-blue-200 leading-tight text-center">Upload &amp; extract transcripts</span>
           </TabsTrigger>
+
           <TabsTrigger
             value="review"
-            className="flex-1 rounded-xl py-4 text-lg font-medium text-slate-600 data-[state=active]:bg-[#002850] data-[state=active]:text-white data-[state=active]:shadow-lg transition-all"
+            className="group relative flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#002850]/30 data-[state=active]:border-[#002850] data-[state=active]:bg-[#002850] data-[state=active]:shadow-lg data-[state=active]:shadow-[#002850]/20 data-[state=active]:scale-[1.02]"
           >
-            <div className="flex items-center justify-center gap-2">
-              <FileSpreadsheet className="w-5 h-5" />
-              Review Q&A
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 group-data-[state=active]:bg-white/15 transition-colors">
+              <FileSpreadsheet className="w-5 h-5 text-slate-500 group-data-[state=active]:text-white" />
             </div>
+            <span className="text-sm font-semibold text-slate-600 group-data-[state=active]:text-white">Review Q&amp;A</span>
+            <span className="text-[10px] text-slate-400 group-data-[state=active]:text-blue-200 leading-tight text-center">Browse &amp; edit Q&amp;A records</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="users"
+            className="group relative flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#002850]/30 data-[state=active]:border-[#002850] data-[state=active]:bg-[#002850] data-[state=active]:shadow-lg data-[state=active]:shadow-[#002850]/20 data-[state=active]:scale-[1.02]"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 group-data-[state=active]:bg-white/15 transition-colors">
+              <UserPlus className="w-5 h-5 text-slate-500 group-data-[state=active]:text-white" />
+            </div>
+            <span className="text-sm font-semibold text-slate-600 group-data-[state=active]:text-white">Manage Users</span>
+            <span className="text-[10px] text-slate-400 group-data-[state=active]:text-blue-200 leading-tight text-center">Add &amp; manage user accounts</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="delete-company"
+            className="group relative flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-red-400/40 data-[state=active]:border-red-700 data-[state=active]:bg-red-700 data-[state=active]:shadow-lg data-[state=active]:shadow-red-700/20 data-[state=active]:scale-[1.02]"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 group-data-[state=active]:bg-white/15 transition-colors">
+              <Trash2 className="w-5 h-5 text-red-500 group-data-[state=active]:text-white" />
+            </div>
+            <span className="text-sm font-semibold text-slate-600 group-data-[state=active]:text-white">Delete Company</span>
+            <span className="text-[10px] text-slate-400 group-data-[state=active]:text-red-200 leading-tight text-center">Remove all company data</span>
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="users">
+          <Card className="border-slate-200 shadow-sm max-w-2xl mx-auto">
+            <CardHeader>
+              <CardTitle className="text-xl text-[#8B1319]">
+                Create New User
+              </CardTitle>
+              <CardDescription>
+                Provision a new account for an employee. They will be able to log in securely.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateUser} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input
+                      id="firstName"
+                      value={userFirstName}
+                      onChange={(e) => setUserFirstName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input
+                      id="lastName"
+                      value={userLastName}
+                      onChange={(e) => setUserLastName(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={userEmail}
+                    onChange={(e) => setUserEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Temporary Password</Label>
+                  <Input
+                    id="password"
+                    type="text"
+                    value={userPassword}
+                    onChange={(e) => setUserPassword(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>System Role</Label>
+                  <Select value={userRole} onValueChange={setUserRole}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">Standard User</SelectItem>
+                      <SelectItem value="admin">Administrator</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {userMessage && (
+                  <div className={`p-3 rounded-md text-sm ${userMessage.includes("success") ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                    {userMessage}
+                  </div>
+                )}
+                <Button type="submit" disabled={isCreatingUser} className="w-full bg-[#002850] hover:bg-[#002850]/90">
+                  {isCreatingUser ? "Provisioning..." : "Create Account"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="delete-company">
+          <DeleteCompanyTab companies={availableCompanies} onDeleted={(name) => setAvailableCompanies(prev => prev.filter(c => c !== name))} />
+        </TabsContent>
 
         <TabsContent value="review">
           <div className="space-y-6">
             <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200">
               <span className="font-medium text-slate-700">Company:</span>
-              <Select defaultValue="hdfc">
+              <Select value={reviewCompany} onValueChange={setReviewCompany}>
                 <SelectTrigger className="w-64">
                   <SelectValue placeholder="Select Company" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hdfc">HDFC Bank</SelectItem>
+                  {availableCompanies.length > 0 ? (
+                    availableCompanies.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)
+                  ) : (
+                    <SelectItem value="none" disabled>No companies available</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -583,7 +1026,7 @@ export default function AdminDashboard() {
                 <Tabs value={activeReviewQuarter} onValueChange={setActiveReviewQuarter}>
                   <div className="flex justify-between items-center mb-4">
                     <TabsList>
-                      {REVIEW_QUARTERS.map(qtr => (
+                      {availableReviewQuarters.map(qtr => (
                         <TabsTrigger key={qtr} value={qtr}>{qtr}</TabsTrigger>
                       ))}
                     </TabsList>
@@ -592,55 +1035,75 @@ export default function AdminDashboard() {
                     </Button>
                   </div>
                   
-                  {REVIEW_QUARTERS.map(qtr => {
-                    const qtrQuestions = actualQuestions.filter(q => q.period === qtr);
-                    return (
-                      <TabsContent key={qtr} value={qtr} className="mt-0">
-                        <div className="border rounded-lg overflow-hidden">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead className="min-w-[250px]">Question</TableHead>
-                                <TableHead className="min-w-[300px]">Answer</TableHead>
-                                <TableHead className="w-[150px]">Answered By</TableHead>
-                                <TableHead className="w-[150px]">Category</TableHead>
-                                <TableHead className="w-[80px]">Actions</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {qtrQuestions.length > 0 ? (
-                                qtrQuestions.map((row) => (
-                                  <TableRow key={row.id}>
-                                    <TableCell className="text-sm font-medium">
-                                      <div className="max-w-[55ch] truncate" title={row.question}>{row.question}</div>
-                                    </TableCell>
-                                    <TableCell className="text-sm text-slate-600">
-                                      <div className="max-w-[67ch] truncate" title={row.answer}>{row.answer}</div>
-                                    </TableCell>
-                                    <TableCell className="text-sm">{row.answeredBy}</TableCell>
-                                    <TableCell>
-                                      <Badge variant="outline" className="text-xs">{row.category}</Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                      <Button variant="ghost" size="sm" onClick={() => setEditingQuestion(row)}>
-                                        <Edit className="w-4 h-4 text-slate-500 hover:text-slate-700" />
-                                      </Button>
+                  {actualQuestionsLoading ? (
+                    <div className="flex justify-center p-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#ED232A]"></div></div>
+                  ) : availableReviewQuarters.length === 0 ? (
+                    <div className="border rounded-lg p-10 text-center text-slate-500">
+                      No Actual Questions found for this company. Upload a Historical PDF above!
+                    </div>
+                  ) : (
+                    availableReviewQuarters.map(qtr => {
+                      const qtrQuestions = actualQuestions.filter(q => q.period === qtr);
+                      return (
+                        <TabsContent key={qtr} value={qtr} className="mt-0">
+                          <div className="border rounded-lg overflow-hidden">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="min-w-[200px]">Question</TableHead>
+                                  <TableHead className="min-w-[150px]">Question Topics</TableHead>
+                                  <TableHead className="min-w-[200px]">Answer</TableHead>
+                                  <TableHead className="min-w-[150px]">Answer Summary</TableHead>
+                                  <TableHead className="min-w-[150px]">Key Points</TableHead>
+                                  <TableHead className="w-[120px]">Answered By</TableHead>
+                                  <TableHead className="w-[100px]">Category</TableHead>
+                                  <TableHead className="w-[80px]">Actions</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {qtrQuestions.length > 0 ? (
+                                  qtrQuestions.map((row) => (
+                                    <TableRow key={row.id}>
+                                      <TableCell className="text-sm font-medium">
+                                        <div className="max-w-[40ch] truncate" title={row.question}>{row.question}</div>
+                                      </TableCell>
+                                      <TableCell className="text-sm text-slate-600">
+                                        <div className="max-w-[30ch] truncate" title={row.questionTopics}>{row.questionTopics || "-"}</div>
+                                      </TableCell>
+                                      <TableCell className="text-sm text-slate-600">
+                                        <div className="max-w-[50ch] truncate" title={row.answer}>{row.answer}</div>
+                                      </TableCell>
+                                      <TableCell className="text-sm text-slate-600">
+                                        <div className="max-w-[30ch] truncate" title={row.answerSummary}>{row.answerSummary || "-"}</div>
+                                      </TableCell>
+                                      <TableCell className="text-sm text-slate-600">
+                                        <div className="max-w-[30ch] truncate" title={row.keyPoints}>{row.keyPoints || "-"}</div>
+                                      </TableCell>
+                                      <TableCell className="text-sm">{row.answeredBy}</TableCell>
+                                      <TableCell>
+                                        <Badge variant="outline" className="text-xs">{row.category}</Badge>
+                                      </TableCell>
+                                      <TableCell>
+                                        <Button variant="ghost" size="sm" onClick={() => setEditingQuestion(row)}>
+                                          <Edit className="w-4 h-4 text-slate-500 hover:text-slate-700" />
+                                        </Button>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))
+                                ) : (
+                                  <TableRow>
+                                    <TableCell colSpan={8} className="h-24 text-center text-slate-500">
+                                      No Q&A data available for {qtr}.
                                     </TableCell>
                                   </TableRow>
-                                ))
-                              ) : (
-                                <TableRow>
-                                  <TableCell colSpan={5} className="h-24 text-center text-slate-500">
-                                    No Q&A data available for {qtr}.
-                                  </TableCell>
-                                </TableRow>
-                              )}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      </TabsContent>
-                    );
-                  })}
+                                )}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </TabsContent>
+                      );
+                    })
+                  )}
                 </Tabs>
               </CardContent>
             </Card>
@@ -913,6 +1376,18 @@ export default function AdminDashboard() {
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label>Question Topics</Label>
+                    <Input
+                      value={editingQuestion.questionTopics || ""}
+                      onChange={(e) =>
+                        setEditingQuestion({
+                          ...editingQuestion,
+                          questionTopics: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <Label>Answer</Label>
                     <Textarea
                       value={editingQuestion.answer}
@@ -922,8 +1397,36 @@ export default function AdminDashboard() {
                           answer: e.target.value,
                         })
                       }
-                      className="min-h-[220px] break-words [overflow-wrap:anywhere]"
+                      className="min-h-[120px] break-words [overflow-wrap:anywhere]"
                     />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Answer Summary</Label>
+                      <Textarea
+                        value={editingQuestion.answerSummary || ""}
+                        onChange={(e) =>
+                          setEditingQuestion({
+                            ...editingQuestion,
+                            answerSummary: e.target.value,
+                          })
+                        }
+                        className="min-h-[80px] break-words [overflow-wrap:anywhere]"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Key Points</Label>
+                      <Textarea
+                        value={editingQuestion.keyPoints || ""}
+                        onChange={(e) =>
+                          setEditingQuestion({
+                            ...editingQuestion,
+                            keyPoints: e.target.value,
+                          })
+                        }
+                        className="min-h-[80px] break-words [overflow-wrap:anywhere]"
+                      />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -1298,15 +1801,24 @@ export default function AdminDashboard() {
             </Card>
 
             {/* Action Bar */}
-            <div className="flex justify-end pt-4 mb-20">
+            <div className="flex flex-col items-end pt-4 mb-20">
               <Button
                 onClick={handleSave}
-                disabled={!isFormValid}
+                disabled={!isFormValid || isProcessing}
                 className="bg-[#ED232A] hover:bg-[#C11B22] text-white px-8 py-6 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all font-medium disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
               >
-                <Save className="h-5 w-5 mr-2" />
-                Submit and Generate Q&A
+                {isProcessing ? (
+                  <div className="h-5 w-5 mr-2 animate-spin rounded-full border-b-2 border-white"></div>
+                ) : (
+                  <Save className="h-5 w-5 mr-2" />
+                )}
+                {isProcessing ? "Processing..." : "Submit and Generate Q&A"}
               </Button>
+              {processingMessage && (
+                <div className={`mt-3 text-sm font-medium px-4 py-2 rounded-lg ${processingMessage.includes("complete") ? "bg-green-100 text-green-800" : "bg-blue-50 text-blue-700 animate-pulse"}`}>
+                  {processingMessage}
+                </div>
+              )}
             </div>
           </div>
         </TabsContent>
