@@ -531,3 +531,96 @@ def get_comparisons(company: Optional[str] = Query(default=None)):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+
+class PredictedQuestionCreate(BaseModel):
+    company_name: str
+    period: str
+    question: str
+    answer: Optional[str] = None
+    category: Optional[str] = None
+    risk: Optional[str] = 'Medium'
+
+class PredictedQuestionUpdate(BaseModel):
+    question: Optional[str] = None
+    answer: Optional[str] = None
+    category: Optional[str] = None
+    risk: Optional[str] = None
+
+@app.post("/api/predicted-questions")
+def create_predicted_question(req: PredictedQuestionCreate):
+    try:
+        parts = req.period.split(" FY")
+        if len(parts) != 2:
+            raise HTTPException(status_code=400, detail="Invalid period format")
+        quarter = parts[0].strip()
+        year_suffix = parts[1].strip()
+        year = 2000 + int(year_suffix) if len(year_suffix) == 2 else int(year_suffix)
+
+        company_resp = supabase.table("companies").select("id").ilike("name", f"%{req.company_name}%").execute()
+        if not company_resp.data:
+            raise HTTPException(status_code=404, detail=f"Company {req.company_name} not found")
+        company_id = company_resp.data[0]["id"]
+
+        call_resp = supabase.table("earnings_calls").select("id").eq("company_id", company_id).eq("fiscal_year", year).eq("quarter", quarter).execute()
+        
+        if not call_resp.data:
+            new_call = supabase.table("earnings_calls").insert({
+                "company_id": company_id,
+                "fiscal_year": year,
+                "quarter": quarter,
+                "is_upcoming": True
+            }).execute()
+            earnings_call_id = new_call.data[0]["id"]
+        else:
+            earnings_call_id = call_resp.data[0]["id"]
+
+        ins_res = supabase.table("predicted_questions").insert({
+            "earnings_call_id": earnings_call_id,
+            "question_text": req.question,
+            "suggested_answer": req.answer,
+            "category": req.category,
+            "risk": req.risk
+        }).execute()
+        
+        record = ins_res.data[0]
+        return {
+            "id": record["id"],
+            "period": req.period,
+            "question": record.get("question_text", ""),
+            "answer": record.get("suggested_answer", ""),
+            "category": record.get("category", ""),
+            "risk": record.get("risk", "Medium")
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.put("/api/predicted-questions/{question_id}")
+def update_predicted_question(question_id: str, req: PredictedQuestionUpdate):
+    try:
+        update_data = {}
+        if req.question is not None: update_data["question_text"] = req.question
+        if req.answer is not None: update_data["suggested_answer"] = req.answer
+        if req.category is not None: update_data["category"] = req.category
+        if req.risk is not None: update_data["risk"] = req.risk
+
+        if not update_data:
+            return {"message": "No fields to update"}
+            
+        upd_res = supabase.table("predicted_questions").update(update_data).eq("id", question_id).execute()
+        if not upd_res.data:
+            raise HTTPException(status_code=404, detail="Predicted question not found")
+            
+        return {"message": "Predicted question updated successfully"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.delete("/api/predicted-questions/{question_id}")
+def delete_predicted_question(question_id: str):
+    try:
+        del_res = supabase.table("predicted_questions").delete().eq("id", question_id).execute()
+        if not del_res.data:
+            raise HTTPException(status_code=404, detail="Predicted question not found")
+        return {"message": "Predicted question deleted successfully"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+

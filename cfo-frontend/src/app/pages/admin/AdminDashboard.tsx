@@ -821,10 +821,6 @@ export default function AdminDashboard() {
               clearInterval(pollPipeline);
               setProcessingMessage("Pipeline generation complete!");
               setIsProcessing(false);
-              setHistoricalPdfs([]);
-              setFinancialStats([]);
-              setCurrentQuarterStats([]);
-              setCurrentQuarterEc([]);
               setTimeout(() => setProcessingMessage(""), 5000);
             } else if (statusData.status.startsWith("ERROR")) {
               clearInterval(pollPipeline);
@@ -942,21 +938,68 @@ export default function AdminDashboard() {
     setEditingComparison(null);
   };
 
-  const handleSavePredictedQuestion = () => {
+  const handleSavePredictedQuestion = async () => {
     if (!editingPredictedQuestion) return;
-    if (isAddPredictedMode) {
-      setPredictedQuestions((prev) => [editingPredictedQuestion, ...prev]);
-    } else {
-      setPredictedQuestions((prev) =>
-        prev.map((q) => (q.id === editingPredictedQuestion.id ? editingPredictedQuestion : q)),
-      );
+    try {
+      if (isAddPredictedMode) {
+        const payload = {
+          company_name: reviewCompany,
+          period: editingPredictedQuestion.period || `${QUARTERS[0]} FY${currentYear.toString().slice(-2)}`,
+          question: editingPredictedQuestion.question,
+          answer: editingPredictedQuestion.answer,
+          category: editingPredictedQuestion.category,
+          risk: editingPredictedQuestion.risk || "Medium"
+        };
+        const res = await fetch(`${API_URL}/api/predicted-questions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Failed to add predicted question");
+        const newRecord = await res.json();
+        setPredictedQuestions((prev) => [newRecord, ...prev]);
+      } else {
+        const payload = {
+          question: editingPredictedQuestion.question,
+          answer: editingPredictedQuestion.answer,
+          category: editingPredictedQuestion.category,
+          risk: editingPredictedQuestion.risk
+        };
+        const res = await fetch(`${API_URL}/api/predicted-questions/${editingPredictedQuestion.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Failed to update predicted question");
+        
+        setPredictedQuestions((prev) =>
+          prev.map((q) => (q.id === editingPredictedQuestion.id ? { ...q, ...payload } : q)),
+        );
+      }
+      setEditingPredictedQuestion(null);
+      setIsAddPredictedMode(false);
+    } catch (err: any) {
+      alert("Error saving: " + err.message);
     }
-    setEditingPredictedQuestion(null);
-    setIsAddPredictedMode(false);
   };
 
-  const handleDeletePredictedQuestion = () => {
+  const handleDeletePredictedQuestion = async () => {
     if (!editingPredictedQuestion) return;
+    
+    // Only attempt to delete on backend if it's an existing record (not during aborted creation)
+    if (!isAddPredictedMode) {
+      if (!confirm("Are you sure you want to delete this predicted question?")) return;
+      try {
+        const res = await fetch(`${API_URL}/api/predicted-questions/${editingPredictedQuestion.id}`, {
+          method: "DELETE"
+        });
+        if (!res.ok) throw new Error("Failed to delete predicted question");
+      } catch (err: any) {
+        alert("Error deleting: " + err.message);
+        return; // Early return if deletion failed
+      }
+    }
+    
     setPredictedQuestions((prev) =>
       prev.filter((q) => q.id !== editingPredictedQuestion.id),
     );
@@ -968,6 +1011,7 @@ export default function AdminDashboard() {
     setIsAddPredictedMode(true);
     setEditingPredictedQuestion({
       id: Math.random().toString(36).substring(7),
+      period: activePredictedQuarter || `${QUARTERS[0]} FY${currentYear.toString().slice(-2)}`,
       question: "",
       answer: "",
       category: "",
@@ -1442,8 +1486,13 @@ export default function AdminDashboard() {
                                     )}
                                   </TableCell>
                                   <TableCell>
-                                    <Button variant="ghost" size="sm" onClick={() => setEditingComparison(row)}>
-                                      <Edit className="w-4 h-4 text-slate-500 hover:text-slate-700" />
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      onClick={() => setEditingComparison(row)}
+                                      disabled={!row.similarity || row.similarity <= 0}
+                                    >
+                                      <Edit className={`w-4 h-4 ${!row.similarity || row.similarity <= 0 ? 'text-slate-300' : 'text-slate-500 hover:text-slate-700'}`} />
                                     </Button>
                                   </TableCell>
                                 </TableRow>
@@ -1487,19 +1536,15 @@ export default function AdminDashboard() {
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
                     <Label>Predicted Question</Label>
-                    <Textarea 
-                      value={editingComparison.predictedQuestion}
-                      onChange={(e) => setEditingComparison({...editingComparison, predictedQuestion: e.target.value})}
-                      className="min-h-[80px] break-words [overflow-wrap:anywhere]"
-                    />
+                    <div className="min-h-[80px] p-3 break-words bg-slate-50 border border-slate-200 rounded-md text-sm text-slate-700 [overflow-wrap:anywhere]">
+                      {editingComparison.predictedQuestion || <span className="text-slate-400 italic">No predicted question text</span>}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label>Actual Question</Label>
-                    <Textarea 
-                      value={editingComparison.actualPhrasing}
-                      onChange={(e) => setEditingComparison({...editingComparison, actualPhrasing: e.target.value})}
-                      className="min-h-[80px] break-words [overflow-wrap:anywhere]"
-                    />
+                    <div className="min-h-[80px] p-3 break-words bg-slate-50 border border-slate-200 rounded-md text-sm text-slate-700 [overflow-wrap:anywhere]">
+                      {editingComparison.actualPhrasing || <span className="text-slate-400 italic">No actual question text</span>}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -1514,18 +1559,9 @@ export default function AdminDashboard() {
                     </div>
                     <div className="space-y-2">
                       <Label>Was Asked</Label>
-                      <Select 
-                        value={editingComparison.wasAsked ? "yes" : "no"}
-                        onValueChange={(val) => setEditingComparison({...editingComparison, wasAsked: val === "yes"})}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="yes">Yes</SelectItem>
-                          <SelectItem value="no">No</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="p-2 bg-slate-50 border border-slate-200 rounded-md text-sm font-medium text-slate-700">
+                        {editingComparison.wasAsked ? "Yes" : "No"}
+                      </div>
                     </div>
                   </div>
                 </div>
