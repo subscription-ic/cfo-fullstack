@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+const API_URL = import.meta.env.VITE_API_URL ?? `${API_URL}`;
+
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -304,7 +306,7 @@ function DeleteCompanyTab({ companies, onDeleted }: { companies: string[], onDel
     setIsDeleting(true);
     setMessage(null);
     try {
-      const res = await fetch(`http://localhost:8000/api/companies/${encodeURIComponent(selectedCompany)}`, {
+      const res = await fetch(`${API_URL}/api/companies/${encodeURIComponent(selectedCompany)}`, {
         method: "DELETE",
       });
       if (!res.ok) {
@@ -435,7 +437,7 @@ export default function AdminDashboard() {
   const [reviewCompany, setReviewCompany] = useState<string>("");
 
   const fetchCompanies = () => {
-    fetch("http://localhost:8000/api/companies")
+    fetch(`${API_URL}/api/companies`)
       .then(res => res.json())
       .then(data => {
         if (data.companies) {
@@ -452,13 +454,21 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!reviewCompany) return;
     setActualQuestionsLoading(true);
-    fetch(`http://localhost:8000/api/actual-questions?company=${encodeURIComponent(reviewCompany)}`)
+    fetch(`${API_URL}/api/actual-questions?company=${encodeURIComponent(reviewCompany)}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.data) {
           setActualQuestions(data.data);
           
           const periods = Array.from(new Set(data.data.map((q: any) => q.period))) as string[];
+          // Sort periods chronologically: Q1 FY25, Q2 FY25, Q1 FY26, etc.
+          periods.sort((a, b) => {
+            const parseP = (p: string) => {
+              const m = p.match(/Q(\d)\s+FY(\d+)/);
+              return m ? parseInt(m[2]) * 10 + parseInt(m[1]) : 0;
+            };
+            return parseP(a) - parseP(b);
+          });
           setAvailableReviewQuarters(periods);
           
           if (periods.length > 0) {
@@ -472,14 +482,72 @@ export default function AdminDashboard() {
       .finally(() => setActualQuestionsLoading(false));
   }, [reviewCompany]);
 
-  const [predictedQuestions, setPredictedQuestions] = useState(mockPredictedQuestions);
+  const [predictedQuestions, setPredictedQuestions] = useState<any[]>([]);
+  const [predictedQuestionsLoading, setPredictedQuestionsLoading] = useState(false);
+  const [availablePredictedQuarters, setAvailablePredictedQuarters] = useState<string[]>([]);
+  const [activePredictedQuarter, setActivePredictedQuarter] = useState<string>("");
+
+  useEffect(() => {
+    if (!reviewCompany) return;
+    setPredictedQuestionsLoading(true);
+    fetch(`${API_URL}/api/predicted-questions?company=${encodeURIComponent(reviewCompany)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.data) {
+          setPredictedQuestions(data.data);
+          const periods = Array.from(new Set(data.data.map((q: any) => q.period))) as string[];
+          periods.sort((a, b) => {
+            const parseP = (p: string) => { const m = p.match(/Q(\d)\s+FY(\d+)/); return m ? parseInt(m[2]) * 10 + parseInt(m[1]) : 0; };
+            return parseP(a) - parseP(b);
+          });
+          setAvailablePredictedQuarters(periods);
+          if (periods.length > 0) setActivePredictedQuarter(periods[periods.length - 1]);
+        }
+      })
+      .catch(err => console.error("Failed to fetch predicted questions:", err))
+      .finally(() => setPredictedQuestionsLoading(false));
+  }, [reviewCompany]);
+
   const [editingPredictedQuestion, setEditingPredictedQuestion] = useState<any>(null);
   const [isAddPredictedMode, setIsAddPredictedMode] = useState<boolean>(false);
 
-  const [comparisonState, setComparisonState] = useState(comparisonData);
+  const [comparisonState, setComparisonState] = useState<any[]>([]);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [availableComparisonQuarters, setAvailableComparisonQuarters] = useState<string[]>([]);
+  const [activeComparisonQuarter, setActiveComparisonQuarter] = useState<string>("");
   const [editingComparison, setEditingComparison] = useState<ComparisonData | null>(null);
+  const [activeComparisonTab, setActiveComparisonTab] = useState("all");
 
+  useEffect(() => {
+    if (!reviewCompany) return;
+    setComparisonLoading(true);
+    fetch(`${API_URL}/api/comparisons?company=${encodeURIComponent(reviewCompany)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.data) {
+          setComparisonState(data.data);
+          const periods = Array.from(new Set(data.data.map((q: any) => q.period))) as string[];
+          periods.sort((a, b) => {
+            const parseP = (p: string) => { const m = p.match(/Q(\d)\s+FY(\d+)/); return m ? parseInt(m[2]) * 10 + parseInt(m[1]) : 0; };
+            return parseP(a) - parseP(b);
+          });
+          setAvailableComparisonQuarters(periods);
+          if (periods.length > 0) setActiveComparisonQuarter(periods[periods.length - 1]);
+        }
+      })
+      .catch(err => console.error("Failed to fetch comparisons:", err))
+      .finally(() => setComparisonLoading(false));
+  }, [reviewCompany]);
   const [companyName, setCompanyName] = useState("");
+  const [cutOffDate, setCutOffDate] = useState("");
+  const DEFAULT_QUERIES = [
+    "{company} quarterly financial results analyst questions earnings call before {cutoff}",
+    "{company} revenue growth margin guidance outlook before {cutoff}",
+    "{company} stock analyst commentary investor concerns before {cutoff}",
+    "{company} earnings call key themes sector trends before {cutoff}",
+    "{company} India business update capex debt guidance before {cutoff}",
+  ].join("\n");
+  const [searchQueries, setSearchQueries] = useState<string>(DEFAULT_QUERIES);
 
   // Upload Processing State
   const [isProcessing, setIsProcessing] = useState(false);
@@ -499,7 +567,7 @@ export default function AdminDashboard() {
     setIsCreatingUser(true);
     setUserMessage("");
     try {
-      const resp = await fetch("http://localhost:8000/api/admin/users", {
+      const resp = await fetch(`${API_URL}/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -668,8 +736,10 @@ export default function AdminDashboard() {
           formData.append("company", companyName);
           formData.append("year", fileObj.year);
           formData.append("quarter", fileObj.quarter);
+          if (cutOffDate) formData.append("cut_off_date", cutOffDate);
+          if (searchQueries) formData.append("search_queries", searchQueries);
 
-          const response = await fetch("http://localhost:8000/api/upload/historical", {
+          const response = await fetch(`${API_URL}/api/upload/historical`, {
             method: "POST",
             body: formData
           });
@@ -679,10 +749,9 @@ export default function AdminDashboard() {
 
           const taskId = data.task_id;
 
-          // Poll until this file is done
           const pollInterval = setInterval(async () => {
             try {
-              const statusRes = await fetch(`http://localhost:8000/api/tasks/${taskId}`);
+              const statusRes = await fetch(`${API_URL}/api/tasks/${taskId}`);
               const statusData = await statusRes.json();
               if (statusRes.ok) {
                 setProcessingMessage(`[${index + 1}/${total}] ${fileObj.file.name}: ${statusData.status}`);
@@ -706,16 +775,72 @@ export default function AdminDashboard() {
     };
 
     try {
-      const total = historicalPdfs.length;
-      for (let i = 0; i < total; i++) {
-        await uploadAndPoll(historicalPdfs[i], i, total);
+      for (let i = 0; i < historicalPdfs.length; i++) {
+        await uploadAndPoll(historicalPdfs[i], i, historicalPdfs.length);
       }
-      setProcessingMessage(`All ${total} PDF${total > 1 ? "s" : ""} processed successfully! Actual questions updated.`);
-      setTimeout(() => setProcessingMessage(""), 5000);
-    } catch (err: any) {
-      alert("Processing failed: " + err.message);
-    } finally {
+
+      setProcessingMessage("Starting Prediction Pipeline...");
+      const predictData = new FormData();
+      predictData.append("company", companyName);
+      if (cutOffDate) predictData.append("cut_off_date", cutOffDate);
+      if (searchQueries) predictData.append("search_queries", searchQueries);
+      
+      financialStats.forEach(f => {
+          predictData.append("historical_fin_files", f.file);
+          predictData.append("historical_fin_quarters", `${f.quarter}-${f.year}`);
+      });
+
+      if (currentQuarterStats.length > 0) {
+          predictData.append("current_fin_file", currentQuarterStats[0].file);
+      }
+      
+      if (currentQuarterEc.length > 0) {
+          predictData.append("current_quarter", `${currentQuarterEc[0].quarter}-${currentQuarterEc[0].year}`);
+      } else if (currentQuarterStats.length > 0) {
+          predictData.append("current_quarter", `${currentQuarterStats[0].quarter}-${currentQuarterStats[0].year}`);
+      }
+      
+      if (currentQuarterEc.length > 0) {
+          predictData.append("current_ec_file", currentQuarterEc[0].file);
+      }
+      
+      const pResp = await fetch(`${API_URL}/api/pipeline/predict`, {
+          method: "POST",
+          body: predictData,
+      });
+      const pData = await pResp.json();
+      const pTaskId = pData.task_id;
+
+      const pollPipeline = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`${API_URL}/api/pipeline/tasks/${pTaskId}`);
+          const statusData = await statusRes.json();
+          if (statusRes.ok) {
+            setProcessingMessage(`Pipeline: ${statusData.status}`);
+            if (statusData.status === "COMPLETE") {
+              clearInterval(pollPipeline);
+              setProcessingMessage("Pipeline generation complete!");
+              setIsProcessing(false);
+              setHistoricalPdfs([]);
+              setFinancialStats([]);
+              setCurrentQuarterStats([]);
+              setCurrentQuarterEc([]);
+              setTimeout(() => setProcessingMessage(""), 5000);
+            } else if (statusData.status.startsWith("ERROR")) {
+              clearInterval(pollPipeline);
+              alert(`Pipeline Failed: ${statusData.status}`);
+              setIsProcessing(false);
+            }
+          }
+        } catch (err) {
+          console.error("Pipeline polling error", err);
+        }
+      }, 2000);
+
+    } catch (error: any) {
+      alert(`Process aborted: ${error.message}`);
       setIsProcessing(false);
+      setProcessingMessage("");
     }
   };
 
@@ -734,7 +859,7 @@ export default function AdminDashboard() {
           answeredBy: editingQuestion.answeredBy || "",
           category: editingQuestion.category || "General"
         };
-        const res = await fetch("http://localhost:8000/api/actual-questions", {
+        const res = await fetch(`${API_URL}/api/actual-questions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
@@ -752,7 +877,7 @@ export default function AdminDashboard() {
           answeredBy: editingQuestion.answeredBy,
           category: editingQuestion.category
         };
-        const res = await fetch(`http://localhost:8000/api/actual-questions/${editingQuestion.id}`, {
+        const res = await fetch(`${API_URL}/api/actual-questions/${editingQuestion.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
@@ -780,7 +905,7 @@ export default function AdminDashboard() {
     if (!window.confirm("Are you sure you want to delete this actual question permanently?")) return;
     
     try {
-      const res = await fetch(`http://localhost:8000/api/actual-questions/${editingQuestion.id}`, {
+      const res = await fetch(`${API_URL}/api/actual-questions/${editingQuestion.id}`, {
         method: "DELETE"
       });
       if (!res.ok) throw new Error("Failed to delete question");
@@ -1025,9 +1150,9 @@ export default function AdminDashboard() {
               <CardContent>
                 <Tabs value={activeReviewQuarter} onValueChange={setActiveReviewQuarter}>
                   <div className="flex justify-between items-center mb-4">
-                    <TabsList>
+                    <TabsList className="flex overflow-x-auto max-w-[60vw] scrollbar-hide">
                       {availableReviewQuarters.map(qtr => (
-                        <TabsTrigger key={qtr} value={qtr}>{qtr}</TabsTrigger>
+                        <TabsTrigger key={qtr} value={qtr} className="shrink-0">{qtr}</TabsTrigger>
                       ))}
                     </TabsList>
                     <Button onClick={() => handleAddRecordClick(activeReviewQuarter)} className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300">
@@ -1119,10 +1244,30 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="flex justify-between items-center mb-4">
-                  <div className="inline-flex h-10 items-center justify-center rounded-md bg-slate-100 p-1 text-slate-500">
-                    <div className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium bg-white text-slate-950 shadow-sm cursor-default select-none">
-                      Q2 FY25
-                    </div>
+                  <div className="flex overflow-x-auto">
+                    {availablePredictedQuarters.length > 0 ? (
+                      <div className="inline-flex h-10 items-center justify-center rounded-md bg-slate-100 p-1 text-slate-500">
+                        {availablePredictedQuarters.map(qtr => (
+                          <button
+                            key={qtr}
+                            onClick={() => setActivePredictedQuarter(qtr)}
+                            className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all shrink-0 ${
+                              activePredictedQuarter === qtr
+                                ? 'bg-white text-slate-950 shadow-sm'
+                                : 'hover:bg-white/50 hover:text-slate-700'
+                            }`}
+                          >
+                            {qtr}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="inline-flex h-10 items-center justify-center rounded-md bg-slate-100 p-1 text-slate-500">
+                        <div className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium bg-white text-slate-950 shadow-sm cursor-default select-none">
+                          No data
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <Button onClick={handleAddPredictedRecordClick} className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300">
                     <Plus className="w-4 h-4 mr-2" /> Add Record
@@ -1141,8 +1286,10 @@ export default function AdminDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {predictedQuestions.length > 0 ? (
-                        predictedQuestions.map((row) => (
+                      {predictedQuestionsLoading ? (
+                        <TableRow><TableCell colSpan={5} className="h-24 text-center"><div className="flex justify-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#ED232A]"></div></div></TableCell></TableRow>
+                      ) : predictedQuestions.filter(q => q.period === activePredictedQuarter).length > 0 ? (
+                        predictedQuestions.filter(q => q.period === activePredictedQuarter).map((row) => (
                           <TableRow key={row.id}>
                             <TableCell className="text-sm font-medium">
                               <div className="max-w-[55ch] truncate" title={row.question}>{row.question}</div>
@@ -1168,7 +1315,9 @@ export default function AdminDashboard() {
                       ) : (
                         <TableRow>
                           <TableCell colSpan={5} className="h-24 text-center text-slate-500">
-                            No predicted questions available.
+                            {!reviewCompany
+                              ? "Select a company above to view predicted questions."
+                              : "No predicted questions found. Run the Generate Q&A pipeline to create predictions."}
                           </TableCell>
                         </TableRow>
                       )}
@@ -1187,19 +1336,44 @@ export default function AdminDashboard() {
               <CardContent>
                 <div className="flex justify-between items-start mb-4">
                   <div className="space-y-4">
-                    <div className="inline-flex h-10 items-center justify-center rounded-md bg-slate-100 p-1 text-slate-500">
-                      <div className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium bg-white text-slate-950 shadow-sm cursor-default select-none">
-                        Q2 FY25
-                      </div>
+                    <div className="flex overflow-x-auto">
+                      {availableComparisonQuarters.length > 0 ? (
+                        <div className="inline-flex h-10 items-center justify-center rounded-md bg-slate-100 p-1 text-slate-500">
+                          {availableComparisonQuarters.map(qtr => (
+                            <button
+                              key={qtr}
+                              onClick={() => setActiveComparisonQuarter(qtr)}
+                              className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all shrink-0 ${
+                                activeComparisonQuarter === qtr
+                                  ? 'bg-white text-slate-950 shadow-sm'
+                                  : 'hover:bg-white/50 hover:text-slate-700'
+                              }`}
+                            >
+                              {qtr}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="inline-flex h-10 items-center justify-center rounded-md bg-slate-100 p-1 text-slate-500">
+                          <div className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium bg-white text-slate-950 shadow-sm cursor-default select-none">
+                            No data
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <Tabs defaultValue="all">
-                      <TabsList>
-                        <TabsTrigger value="all">All ({comparisonState.length})</TabsTrigger>
-                        <TabsTrigger value="correct">Correct Predictions ({comparisonState.filter(d => d.wasAsked && d.predictedQuestion).length})</TabsTrigger>
-                        <TabsTrigger value="missed">Missed ({comparisonState.filter(d => d.feedback === 'missed-question').length})</TabsTrigger>
-                        <TabsTrigger value="false">False Positives ({comparisonState.filter(d => d.feedback === 'false-positive').length})</TabsTrigger>
-                      </TabsList>
-                    </Tabs>
+                    {(() => {
+                      const filteredByQuarter = comparisonState.filter(d => d.period === activeComparisonQuarter);
+                      return (
+                        <Tabs value={activeComparisonTab} onValueChange={setActiveComparisonTab}>
+                          <TabsList>
+                            <TabsTrigger value="all">All ({filteredByQuarter.length})</TabsTrigger>
+                            <TabsTrigger value="correct">Correct Predictions ({filteredByQuarter.filter(d => d.wasAsked && d.predictedQuestion).length})</TabsTrigger>
+                            <TabsTrigger value="missed">Missed ({filteredByQuarter.filter(d => d.feedback === 'missed-actual' || (d.wasAsked && !d.predictedQuestion)).length})</TabsTrigger>
+                            <TabsTrigger value="false">False Positives ({filteredByQuarter.filter(d => !d.wasAsked).length})</TabsTrigger>
+                          </TabsList>
+                        </Tabs>
+                      );
+                    })()}
                   </div>
                   <Button className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 mt-[52px]">
                     Calculate Similarity
@@ -1218,40 +1392,72 @@ export default function AdminDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {comparisonState.map((row) => (
-                        <TableRow key={row.id}>
-                          <TableCell>
-                            {row.wasAsked && row.predictedQuestion ? (
-                              <CheckCircle2 className="w-5 h-5 text-green-600" />
-                            ) : row.wasAsked && !row.predictedQuestion ? (
-                              <XCircle className="w-5 h-5 text-red-600" />
-                            ) : (
-                              <AlertCircle className="w-5 h-5 text-amber-600" />
-                            )}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {row.predictedQuestion || <span className="text-slate-400 italic">Not predicted</span>}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {row.actualPhrasing || <span className="text-slate-400 italic">Not asked</span>}
-                          </TableCell>
-                          <TableCell>
-                            {row.similarity > 0 ? (
-                              <div className="flex items-center gap-2">
-                                <Progress value={row.similarity} className="w-12 h-2" />
-                                <span className="text-sm font-medium">{row.similarity}%</span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 text-sm">N/A</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm" onClick={() => setEditingComparison(row)}>
-                              <Edit className="w-4 h-4 text-slate-500 hover:text-slate-700" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {comparisonLoading ? (
+                        <TableRow><TableCell colSpan={5} className="h-24 text-center"><div className="flex justify-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#ED232A]"></div></div></TableCell></TableRow>
+                      ) : (
+                        comparisonState
+                          .filter(d => d.period === activeComparisonQuarter)
+                          .filter(d => {
+                            if (activeComparisonTab === "all") return true;
+                            if (activeComparisonTab === "correct") return d.wasAsked && d.predictedQuestion;
+                            if (activeComparisonTab === "missed") return d.feedback === 'missed-actual' || (d.wasAsked && !d.predictedQuestion);
+                            if (activeComparisonTab === "false") return !d.wasAsked;
+                            return true;
+                          })
+                          .length > 0 ? (
+                            comparisonState
+                              .filter(d => d.period === activeComparisonQuarter)
+                              .filter(d => {
+                                if (activeComparisonTab === "all") return true;
+                                if (activeComparisonTab === "correct") return d.wasAsked && d.predictedQuestion;
+                                if (activeComparisonTab === "missed") return d.feedback === 'missed-actual' || (d.wasAsked && !d.predictedQuestion);
+                                if (activeComparisonTab === "false") return !d.wasAsked;
+                                return true;
+                              })
+                              .map((row) => (
+                                <TableRow key={row.id}>
+                                  <TableCell>
+                                    {row.wasAsked && row.predictedQuestion ? (
+                                      <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                    ) : row.wasAsked && !row.predictedQuestion ? (
+                                      <XCircle className="w-5 h-5 text-red-600" />
+                                    ) : (
+                                      <AlertCircle className="w-5 h-5 text-amber-600" />
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-sm">
+                                    {row.predictedQuestion || <span className="text-slate-400 italic">Not predicted</span>}
+                                  </TableCell>
+                                  <TableCell className="text-sm">
+                                    {row.actualPhrasing || <span className="text-slate-400 italic">Not asked</span>}
+                                  </TableCell>
+                                  <TableCell>
+                                    {row.similarity > 0 ? (
+                                      <div className="flex items-center gap-2">
+                                        <Progress value={row.similarity} className="w-12 h-2" />
+                                        <span className="text-sm font-medium">{row.similarity}%</span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-400 text-sm">N/A</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button variant="ghost" size="sm" onClick={() => setEditingComparison(row)}>
+                                      <Edit className="w-4 h-4 text-slate-500 hover:text-slate-700" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={5} className="h-24 text-center text-slate-500">
+                                {!reviewCompany
+                                  ? "Select a company above to view predicted vs actual comparisons."
+                                  : "No comparison data found. Run the Extract Q&A and Generate Q&A pipelines."}
+                              </TableCell>
+                            </TableRow>
+                          )
+                      )}
                     </TableBody>
                   </Table>
                 </div>
@@ -1709,7 +1915,7 @@ export default function AdminDashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl text-[#8B1319]">
                   <BarChart className="h-5 w-5" />
-                  Financial Statements
+                  Historical Financial Statements
                 </CardTitle>
                 <CardDescription>
                   Upload supplementary financial statements and proxy materials
@@ -1800,6 +2006,45 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
 
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-xl text-[#8B1319]">
+                  Cut-off Date
+                </CardTitle>
+                <CardDescription>
+                  Optional: Specify a cut-off date for generating answers and context.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Input
+                  type="date"
+                  value={cutOffDate}
+                  max="2099-12-31"
+                  onChange={(e) => setCutOffDate(e.target.value)}
+                  className="max-w-xs block w-full [&::-webkit-calendar-picker-indicator]:ml-auto [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-xl text-[#8B1319]">
+                  Search Queries
+                </CardTitle>
+                <CardDescription>
+                  Modify the initial Tavily search queries if needed. Each line is treated as a separate query. {"{company}"} and {"{cutoff}"} will be dynamically injected.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <textarea
+                  value={searchQueries}
+                  onChange={(e) => setSearchQueries(e.target.value)}
+                  className="flex min-h-[140px] w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B1319]/20 focus:border-[#8B1319] transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Enter one query per line..."
+                />
+              </CardContent>
+            </Card>
+
             {/* Action Bar */}
             <div className="flex flex-col items-end pt-4 mb-20">
               <Button
@@ -1826,3 +2071,5 @@ export default function AdminDashboard() {
     </div>
   );
 }
+
+

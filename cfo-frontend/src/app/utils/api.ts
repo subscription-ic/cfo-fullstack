@@ -2,13 +2,17 @@
  * API service for CFO Earnings Intelligence backend (FastAPI @ port 8000).
  */
 
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+
 
 export interface PredictedQA {
   id: string;
+  period?: string;
   company: string;
-  predicted_question: string;
-  suggested_answer: string;
+  predicted_question?: string;
+  question?: string;
+  suggested_answer?: string;
+  answer?: string;
   category: string;
   risk: string;           // 'low' | 'medium' | 'high'
   created_at: string;

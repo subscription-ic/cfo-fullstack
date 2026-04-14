@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
 import { 
@@ -22,6 +25,7 @@ interface QuestionItem {
   category: string;
   riskLevel: string;
   suggestedAnswer: string;
+  period: string;
   status: 'pending' | 'retained' | 'rejected';
   isCustom?: boolean;
 }
@@ -29,10 +33,11 @@ interface QuestionItem {
 function mapApiToQuestion(q: PredictedQA): QuestionItem {
   return {
     id: q.id,
-    question: q.predicted_question,
-    category: q.category,
+    question: q.predicted_question || q.question || '',
+    category: q.category || 'General',
     riskLevel: q.risk?.toLowerCase() ?? 'medium',
-    suggestedAnswer: q.suggested_answer,
+    suggestedAnswer: q.suggested_answer || q.answer || '',
+    period: q.period ? q.period.split(' ')[0] : 'Q?',
     status: 'pending',
     isCustom: false,
   };
@@ -41,27 +46,46 @@ function mapApiToQuestion(q: PredictedQA): QuestionItem {
 export default function EarningsCallStrategist() {
   const navigate = useNavigate();
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newCustomQuestion, setNewCustomQuestion] = useState('');
   const [openQuestions, setOpenQuestions] = useState<string[]>([]);
+  const [companies, setCompanies] = useState<string[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState<string>("");
 
   useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await fetchPredictedQuestions();
-        setQuestions(data.map(mapApiToQuestion));
-      } catch (err: any) {
-        setError(err.message ?? 'Failed to load questions from the server.');
-        toast.error('Could not load questions', { description: err.message });
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    fetch(`${API_URL}/api/companies`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.companies) {
+          setCompanies(data.companies);
+        }
+      })
+      .catch(err => console.error("Failed to fetch companies:", err));
   }, []);
+
+  const handleGeneratePredictions = async () => {
+    if (!selectedCompany) {
+      toast.error('Please select a company first');
+      return;
+    }
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await fetchPredictedQuestions(selectedCompany);
+      setQuestions(data.map(mapApiToQuestion));
+      if (data.length === 0) {
+        toast.info('No predictions found for this company');
+      } else {
+        toast.success(`Loaded ${data.length} predicted questions`);
+      }
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to load questions from the server.');
+      toast.error('Could not load questions', { description: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
@@ -98,6 +122,7 @@ export default function EarningsCallStrategist() {
       category: 'Custom',
       riskLevel: 'medium',
       suggestedAnswer: 'Please provide your own answer for this custom question.',
+      period: 'Q?',
       status: 'retained',
       isCustom: true,
     };
@@ -181,7 +206,7 @@ export default function EarningsCallStrategist() {
   const retainedCount = retainedQuestions.length;
 
   // ── Loading state ─────────────────────────────────────────────────────────
-  if (loading) {
+  if (loading && questions.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6 flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -232,7 +257,133 @@ export default function EarningsCallStrategist() {
         </div>
 
         {/* Main Content - Two Column Layout */}
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className="space-y-6">
+          {/* File Upload Section */}
+          <Card className="border-[#ED232A]/30 shadow-sm">
+            <CardHeader className="bg-gradient-to-r from-[#FFE8EA] to-white border-b border-[#d4dce6]">
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="text-[#8B1319]">Upload Documents for AI Prediction</CardTitle>
+                  <p className="text-sm text-slate-600 mt-1">Provide historical transcripts, historical financials, and current financials to generate predictions.</p>
+                </div>
+                <div className="w-[300px]">
+                  <Label className="text-xs font-semibold text-[#8B1319] mb-1 block">Target Company</Label>
+                  <Select value={selectedCompany} onValueChange={setSelectedCompany}>
+                    <SelectTrigger className="bg-white border-[#ED232A]/30">
+                      <SelectValue placeholder="Select a company" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {companies.map(c => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="grid md:grid-cols-3 gap-6">
+                
+                {/* Box 1: Historical Transcript */}
+                <div className="flex flex-col gap-3 p-4 border rounded-lg bg-slate-50 border-[#ED232A]/20">
+                  <Label className="font-semibold text-slate-800">Historical Transcript</Label>
+                  <Input type="file" multiple className="bg-white border-slate-300" />
+                  <div className="flex gap-2">
+                    <Select>
+                      <SelectTrigger className="bg-white border-slate-300"><SelectValue placeholder="FY" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="FY24">FY24</SelectItem>
+                        <SelectItem value="FY25">FY25</SelectItem>
+                        <SelectItem value="FY26">FY26</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select>
+                      <SelectTrigger className="bg-white border-slate-300"><SelectValue placeholder="QTR" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Q1">Q1</SelectItem>
+                        <SelectItem value="Q2">Q2</SelectItem>
+                        <SelectItem value="Q3">Q3</SelectItem>
+                        <SelectItem value="Q4">Q4</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Box 2: Historical Financial Results */}
+                <div className="flex flex-col gap-3 p-4 border rounded-lg bg-slate-50 border-[#ED232A]/20">
+                  <Label className="font-semibold text-slate-800">Historical Financial Results</Label>
+                  <Input type="file" multiple className="bg-white border-slate-300" />
+                  <div className="flex gap-2">
+                    <Select>
+                      <SelectTrigger className="bg-white border-slate-300"><SelectValue placeholder="FY" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="FY24">FY24</SelectItem>
+                        <SelectItem value="FY25">FY25</SelectItem>
+                        <SelectItem value="FY26">FY26</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select>
+                      <SelectTrigger className="bg-white border-slate-300"><SelectValue placeholder="QTR" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Q1">Q1</SelectItem>
+                        <SelectItem value="Q2">Q2</SelectItem>
+                        <SelectItem value="Q3">Q3</SelectItem>
+                        <SelectItem value="Q4">Q4</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Box 3: Current Financial Results */}
+                <div className="flex flex-col gap-3 p-4 border rounded-lg bg-slate-50 border-[#ED232A]/20">
+                  <Label className="font-semibold text-slate-800">Current Financial Results</Label>
+                  <Input type="file" className="bg-white border-slate-300" />
+                  <div className="flex gap-2">
+                    <Select>
+                      <SelectTrigger className="bg-white border-slate-300"><SelectValue placeholder="FY" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="FY24">FY24</SelectItem>
+                        <SelectItem value="FY25">FY25</SelectItem>
+                        <SelectItem value="FY26">FY26</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select>
+                      <SelectTrigger className="bg-white border-slate-300"><SelectValue placeholder="QTR" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Q1">Q1</SelectItem>
+                        <SelectItem value="Q2">Q2</SelectItem>
+                        <SelectItem value="Q3">Q3</SelectItem>
+                        <SelectItem value="Q4">Q4</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  disabled
+                  className="text-slate-400 border-slate-200 bg-slate-50 cursor-not-allowed"
+                >
+                  Fetch Documents
+                </Button>
+                <Button 
+                  onClick={handleGeneratePredictions}
+                  className="bg-[#ED232A] hover:bg-[#C11B22] text-white font-medium"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
+                  ) : (
+                    'Upload & Generate Predictions'
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid lg:grid-cols-3 gap-6">
           {/* Left: Predicted Questions List */}
           <Card className="lg:col-span-2 border-[#ED232A]/30 shadow-lg">
             <CardHeader className="bg-gradient-to-r from-[#FFE8EA] to-white border-b border-[#d4dce6]">
@@ -283,10 +434,10 @@ export default function EarningsCallStrategist() {
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="outline" className="text-xs font-semibold text-[#ED232A] border-[#ED232A]">
+                              <Badge variant="outline" className="text-xs font-semibold text-[#ED232A] border-[#ED232A] bg-white">
                                 Q{idx + 1}
                               </Badge>
-                              <Badge variant="outline" className="text-xs border-[#ED232A] text-[#ED232A]">
+                              <Badge variant="outline" className="text-xs border-[#ED232A] text-[#ED232A] bg-white">
                                 {q.category}
                               </Badge>
                               <Badge className={`text-xs ${getRiskColor(q.riskLevel)}`}>
@@ -439,6 +590,7 @@ export default function EarningsCallStrategist() {
               </div>
             </CardContent>
           </Card>
+        </div>
         </div>
       </div>
     </div>

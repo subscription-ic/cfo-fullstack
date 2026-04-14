@@ -237,52 +237,53 @@ async def _process_pdf_async(pdf_path: str, update_status_cb) -> list[dict]:
     client = AsyncOpenAI()
     semaphore = asyncio.Semaphore(OPENAI_CONCURRENCY)
 
-    # ── Phase 1: extract turns from all pages concurrently ────────────────────
-    update_status_cb(f"Extracting turns from {total_pages} pages concurrently (up to {OPENAI_CONCURRENCY} at a time)...")
+    try:
+        # ── Phase 1: extract turns from all pages concurrently ────────────────────
+        update_status_cb(f"Extracting turns from {total_pages} pages concurrently (up to {OPENAI_CONCURRENCY} at a time)...")
 
-    # Pages must be processed with carry_over dependency — we kick them all off
-    # concurrently but carry_over is passed as empty for all pages initially so
-    # the LLM resolves context from the page text itself. This is the trade-off
-    # for parallelism: carry_over chaining is sacrificed for speed.
-    tasks = [
-        async_extract_page_turns(client, semaphore, idx + 1, page_text, "")
-        for idx, page_text in enumerate(pages)
-    ]
-    results = await asyncio.gather(*tasks)
+        tasks = [
+            async_extract_page_turns(client, semaphore, idx + 1, page_text, "")
+            for idx, page_text in enumerate(pages)
+        ]
+        results = await asyncio.gather(*tasks)
 
-    # Re-sort by page number and flatten
-    results_sorted = sorted(results, key=lambda r: r[0])
-    all_turns = []
-    for _, turns, _ in results_sorted:
-        all_turns.extend(turns)
+        # Re-sort by page number and flatten
+        results_sorted = sorted(results, key=lambda r: r[0])
+        all_turns = []
+        for _, turns, _ in results_sorted:
+            all_turns.extend(turns)
 
-    update_status_cb(f"Extracted {len(all_turns)} speaker turns. Grouping into Q&A blocks...")
-    rows = build_rows_from_turns(all_turns)
+        update_status_cb(f"Extracted {len(all_turns)} speaker turns. Grouping into Q&A blocks...")
+        rows = build_rows_from_turns(all_turns)
 
-    # ── Phase 2: classify all Q&A rows concurrently ───────────────────────────
-    update_status_cb(f"Classifying {len(rows)} Q&A pairs concurrently (up to {OPENAI_CONCURRENCY} at a time)...")
-    classify_tasks = [
-        async_classify_question(client, semaphore, i, row["question"], row["answer"])
-        for i, row in enumerate(rows)
-    ]
-    classify_results = await asyncio.gather(*classify_tasks)
-    classify_map = {idx: cls for idx, cls in classify_results}
+        # ── Phase 2: classify all Q&A rows concurrently ───────────────────────────
+        update_status_cb(f"Classifying {len(rows)} Q&A pairs concurrently (up to {OPENAI_CONCURRENCY} at a time)...")
+        classify_tasks = [
+            async_classify_question(client, semaphore, i, row["question"], row["answer"])
+            for i, row in enumerate(rows)
+        ]
+        classify_results = await asyncio.gather(*classify_tasks)
+        classify_map = {idx: cls for idx, cls in classify_results}
 
-    final_rows = []
-    for i, row in enumerate(rows):
-        c = classify_map.get(i, {})
-        final_rows.append({
-            "question_text": row["question"],
-            "answer_text": row["answer"],
-            "answered_by": row["person"],
-            "category": f"{c.get('category', 'General Output')} / {c.get('sub_topic', 'Management Commentary')}",
-            "question_topics": c.get("question_topics", ""),
-            "answer_summary": c.get("answer_summary", ""),
-            "key_points": c.get("key_points", ""),
-        })
+        final_rows = []
+        for i, row in enumerate(rows):
+            c = classify_map.get(i, {})
+            final_rows.append({
+                "question_text": row["question"],
+                "answer_text": row["answer"],
+                "answered_by": row["person"],
+                "category": f"{c.get('category', 'General Output')} / {c.get('sub_topic', 'Management Commentary')}",
+                "question_topics": c.get("question_topics", ""),
+                "answer_summary": c.get("answer_summary", ""),
+                "key_points": c.get("key_points", ""),
+            })
 
-    update_status_cb("Extraction pipeline complete!")
-    return final_rows
+        update_status_cb("Extraction pipeline complete!")
+        return final_rows
+    finally:
+        # Explicitly close the client so httpx can clean up connections
+        # while the event loop is still running, avoiding the 'Event loop is closed' warning
+        await client.close()
 
 
 def process_historical_pdf(pdf_path: str, update_status_cb) -> list[dict]:

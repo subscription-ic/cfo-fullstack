@@ -48,16 +48,23 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Allow the Vite dev server (port 5173) and any other origin during development
+# Allow the Vite dev server and the deployed Vercel frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://cfo-frontend-topaz.vercel.app",
+        "https://cfo-frontend-c7kq63d25-subscription-ics-projects.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+from pipeline_router import pipeline_router
+app.include_router(pipeline_router)
 
 @app.get("/")
 def root():
@@ -66,26 +73,42 @@ def root():
 
 @app.get("/api/predicted-questions")
 def get_predicted_questions(company: Optional[str] = Query(default=None)):
-    """Return rows from predicted_questions, optionally filtering by company."""
+    """Return rows from predicted_questions, optionally filtering by company, with period label."""
     try:
         if company:
             company_resp = supabase.table("companies").select("id").ilike("name", f"%{company}%").execute()
             if not company_resp.data:
                 return {"data": [], "count": 0}
             company_ids = [c["id"] for c in company_resp.data]
-            calls_resp = supabase.table("earnings_calls").select("id").in_("company_id", company_ids).execute()
+            calls_resp = supabase.table("earnings_calls").select("id, fiscal_year, quarter").in_("company_id", company_ids).execute()
         else:
-            calls_resp = supabase.table("earnings_calls").select("id").execute()
+            calls_resp = supabase.table("earnings_calls").select("id, fiscal_year, quarter").execute()
             
         if not calls_resp.data:
             return {"data": [], "count": 0}
-            
-        call_ids = [c["id"] for c in calls_resp.data]
+        
+        call_map = {c["id"]: c for c in calls_resp.data}
+        call_ids = list(call_map.keys())
         response = supabase.table("predicted_questions").select("*").in_("earnings_call_id", call_ids).order("created_at", desc=False).execute()
         
-        return {"data": response.data, "count": len(response.data)}
+        formatted = []
+        for q in response.data:
+            call = call_map.get(q["earnings_call_id"], {})
+            period = f"{call.get('quarter', '?')} FY{str(call.get('fiscal_year', ''))[-2:]}"
+            formatted.append({
+                "id": q["id"],
+                "period": period,
+                "question": q["question_text"],
+                "answer": q.get("suggested_answer", ""),
+                "category": q.get("category", ""),
+                "risk": q.get("risk", "Medium"),
+                "earnings_call_id": q["earnings_call_id"],
+            })
+        
+        return {"data": formatted, "count": len(formatted)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
 
 
 @app.get("/api/predicted-questions/{question_id}")
@@ -344,7 +367,9 @@ def upload_historical(
     file: UploadFile = File(...),
     company: str = Form(...),
     year: int = Form(...),
-    quarter: str = Form(...)
+    quarter: str = Form(...),
+    cut_off_date: Optional[str] = Form(None),
+    search_queries: Optional[str] = Form(None)
 ):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
@@ -352,7 +377,8 @@ def upload_historical(
     task_id = str(uuid.uuid4())
     tasks[task_id] = "Initializing upload..."
     
-    upload_dir = Path(__file__).parent / "uploads"
+    import tempfile
+    upload_dir = Path(tempfile.gettempdir()) / "uploads"
     upload_dir.mkdir(exist_ok=True)
     temp_file_path = upload_dir / f"{task_id}.pdf"
     
@@ -423,3 +449,85 @@ def process_pdf_background(task_id: str, file_path: str, company: str, year: int
             os.remove(file_path)
         except:
             pass
+
+@app.get("/api/comparisons")
+def get_comparisons(company: Optional[str] = Query(default=None)):
+    """Return rows combining predicted_vs_actual_comparisons, predicted_questions, and actual_questions"""
+    try:
+        if company:
+            company_resp = supabase.table("companies").select("id").ilike("name", f"%{company}%").execute()
+            if not company_resp.data:
+                return {"data": [], "count": 0}
+            company_ids = [c["id"] for c in company_resp.data]
+            calls_resp = supabase.table("earnings_calls").select("id, fiscal_year, quarter").in_("company_id", company_ids).execute()
+        else:
+            calls_resp = supabase.table("earnings_calls").select("id, fiscal_year, quarter").execute()
+            
+        if not calls_resp.data:
+            return {"data": [], "count": 0}
+        
+        call_map = {c["id"]: c for c in calls_resp.data}
+        call_ids = list(call_map.keys())
+
+        # Fetch comparisons
+        comps_resp = supabase.table("predicted_vs_actual_comparisons").select("*").in_("earnings_call_id", call_ids).execute()
+        
+        # Fetch predicted questions
+        pred_resp = supabase.table("predicted_questions").select("*").in_("earnings_call_id", call_ids).execute()
+        pred_map = {p["id"]: p for p in pred_resp.data}
+        
+        # Filter call_ids to ONLY those that have predictions or comparisons
+        valid_call_ids = set([c["earnings_call_id"] for c in comps_resp.data] + [p["earnings_call_id"] for p in pred_resp.data])
+        
+        if not valid_call_ids:
+            return {"data": [], "count": 0}
+            
+        # Fetch actual questions ONLY for the valid calls
+        act_resp = supabase.table("actual_questions").select("*").in_("earnings_call_id", list(valid_call_ids)).execute()
+        act_map = {a["id"]: a for a in act_resp.data}
+
+        formatted = []
+        matched_actual_ids = set()
+
+        for c in comps_resp.data:
+            call = call_map.get(c["earnings_call_id"], {})
+            period = f"{call.get('quarter', '?')} FY{str(call.get('fiscal_year', ''))[-2:]}"
+            
+            p_q = pred_map.get(c["predicted_question_id"], {}) if c.get("predicted_question_id") else {}
+            a_q = act_map.get(c["actual_question_id"], {}) if c.get("actual_question_id") else {}
+            
+            if c.get("actual_question_id"):
+                matched_actual_ids.add(c["actual_question_id"])
+
+            formatted.append({
+                "id": c["id"],
+                "period": period,
+                "predictedQuestion": p_q.get("question_text", ""),
+                "actualPhrasing": a_q.get("question_text", ""),
+                "wasAsked": c.get("was_asked", False),
+                "similarity": c.get("similarity_score", 0),
+                "feedback": c.get("feedback", ""),
+                "category": p_q.get("category", "")
+            })
+
+        for act_id, a_q in act_map.items():
+            if act_id not in matched_actual_ids:
+                call = call_map.get(a_q["earnings_call_id"], {})
+                period = f"{call.get('quarter', '?')} FY{str(call.get('fiscal_year', ''))[-2:]}"
+                
+                formatted.append({
+                    "id": f"missed-{act_id}",
+                    "period": period,
+                    "predictedQuestion": "",
+                    "actualPhrasing": a_q.get("question_text", ""),
+                    "wasAsked": True,
+                    "similarity": 0,
+                    "feedback": "missed-actual",
+                    "category": a_q.get("category", "")
+                })
+
+        return {"data": formatted, "count": len(formatted)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+

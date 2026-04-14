@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 import { useNavigate } from 'react-router';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -19,31 +20,62 @@ import { downloadHTMLFile, downloadCSVFile, generateLearningReport, generateTrai
 
 interface ComparisonData {
   id: string;
+  period: string;
   predictedQuestion: string;
   wasAsked: boolean;
   actualPhrasing: string;
   similarity: number;
-  recommendedAnswer: string;
-  actualAnswer: string;
   category: string;
   feedback: string;
 }
 
 export default function PredictionVsActual() {
   const navigate = useNavigate();
-  const [selectedQuarter, setSelectedQuarter] = useState('Q1 FY26');
+  const [companies, setCompanies] = useState<string[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState<string>("");
+  const [comparisonState, setComparisonState] = useState<ComparisonData[]>([]);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [availableQuarters, setAvailableQuarters] = useState<string[]>([]);
+  const [activeQuarter, setActiveQuarter] = useState<string>("");
+  const [activeTab, setActiveTab] = useState("all");
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/companies`)
+      .then(res => res.json())
+      .then(data => { if (data.companies) setCompanies(data.companies); })
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCompany) { setComparisonState([]); setAvailableQuarters([]); setActiveQuarter(""); return; }
+    setComparisonLoading(true);
+    fetch(`${API_URL}/api/comparisons?company=${encodeURIComponent(selectedCompany)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.data) {
+          setComparisonState(data.data);
+          const periods = Array.from(new Set(data.data.map((q: any) => q.period))) as string[];
+          periods.sort((a, b) => {
+            const parseP = (p: string) => { const m = p.match(/Q(\d)\s+FY(\d+)/); return m ? parseInt(m[2]) * 10 + parseInt(m[1]) : 0; };
+            return parseP(a) - parseP(b);
+          });
+          setAvailableQuarters(periods);
+          if (periods.length > 0) setActiveQuarter(periods[periods.length - 1]);
+        }
+      })
+      .catch(err => console.error("Failed to fetch comparisons:", err))
+      .finally(() => setComparisonLoading(false));
+  }, [selectedCompany]);
   
   // Handler functions
   const handleExportReport = () => {
     toast.loading('Generating Learning Report...', { id: 'learning-report' });
-    
     setTimeout(() => {
-      const content = generateLearningReport(selectedQuarter, accuracyMetrics);
-      downloadHTMLFile(content, `Learning-Report-${selectedQuarter.replace(' ', '-')}.html`);
-      
+      const content = generateLearningReport(activeQuarter, {});
+      downloadHTMLFile(content, `Learning-Report-${activeQuarter.replace(' ', '-')}.html`);
       toast.success('Learning Report Downloaded', {
         id: 'learning-report',
-        description: `Comprehensive learning report for ${selectedQuarter} has been saved.`,
+        description: `Comprehensive learning report for ${activeQuarter} has been saved.`,
       });
     }, 1000);
   };
@@ -92,15 +124,10 @@ export default function PredictionVsActual() {
 
   const handleExportTrainingData = () => {
     toast.loading('Exporting Training Data...', { id: 'export-data' });
-    
     setTimeout(() => {
-      const csvContent = generateTrainingData(comparisonData);
-      downloadCSVFile(csvContent, `Training-Data-${selectedQuarter.replace(' ', '-')}.csv`);
-      
-      toast.success('Training Data Downloaded', {
-        id: 'export-data',
-        description: 'Training dataset has been saved as CSV file.',
-      });
+      const csvContent = generateTrainingData(comparisonState);
+      downloadCSVFile(csvContent, `Training-Data-${activeQuarter.replace(' ', '-')}.csv`);
+      toast.success('Training Data Downloaded', { id: 'export-data', description: 'Training dataset has been saved as CSV file.' });
     }, 800);
   };
 
@@ -110,105 +137,6 @@ export default function PredictionVsActual() {
     });
   };
   
-  const comparisonData: ComparisonData[] = [
-    {
-      id: '1',
-      predictedQuestion: 'Can you walk through the key drivers of the 120 bps margin expansion this quarter?',
-      wasAsked: true,
-      actualPhrasing: 'Walk us through the margin bridge this quarter and sustainability into Q2?',
-      similarity: 92,
-      recommendedAnswer: 'The 120 basis point expansion was driven by three factors: operational efficiency gains (60 bps), favorable product mix (40 bps), and pricing realization (20 bps)...',
-      actualAnswer: 'Three main drivers: efficiency improvements from automation, premium mix shift, and pricing actions. We expect most of these gains to sustain...',
-      category: 'Margin / Profitability',
-      feedback: 'good-prediction'
-    },
-    {
-      id: '2',
-      predictedQuestion: 'What gives you confidence in the full-year revenue guidance?',
-      wasAsked: true,
-      actualPhrasing: 'Your guidance implies deceleration in Q2 - what are the specific headwinds?',
-      similarity: 78,
-      recommendedAnswer: 'Our guidance reflects normal seasonality, tougher prior year comparisons, and a prudent approach...',
-      actualAnswer: 'Q2 has typical seasonal patterns, we\'re lapping a very strong Q2 last year, and being appropriately conservative given macro uncertainty...',
-      category: 'Guidance',
-      feedback: 'good-prediction'
-    },
-    {
-      id: '3',
-      predictedQuestion: 'How much of your revenue growth is coming from volume versus price?',
-      wasAsked: true,
-      actualPhrasing: 'Can you break out volume and price contribution to growth?',
-      similarity: 95,
-      recommendedAnswer: 'Q1 growth was 5.5% volume and 3.0% price. We expect this mix to hold through the year...',
-      actualAnswer: 'Volume contributed 5.5 points, pricing 3 points. Both sustainable through the year given our value proposition...',
-      category: 'Revenue / Growth',
-      feedback: 'good-prediction'
-    },
-    {
-      id: '4',
-      predictedQuestion: 'What specific actions are you taking to turn around international?',
-      wasAsked: true,
-      actualPhrasing: 'International remains weak - what\'s the turnaround plan and timeline?',
-      similarity: 88,
-      recommendedAnswer: 'We have a three-pronged plan: new leadership in Europe, localized product portfolio launching Q3, and streamlined go-to-market...',
-      actualAnswer: 'New Europe leadership is in place, we\'re launching localized products in Q3, and simplifying our distribution model. Expect stabilization Q2, growth by Q4...',
-      category: 'Region / Segment',
-      feedback: 'good-prediction'
-    },
-    {
-      id: '5',
-      predictedQuestion: 'Can you provide more color on working capital trends?',
-      wasAsked: false,
-      actualPhrasing: '',
-      similarity: 0,
-      recommendedAnswer: 'Cash conversion was 92% in Q1, slightly below our 95% target due to planned inventory build...',
-      actualAnswer: '',
-      category: 'Capital Allocation',
-      feedback: 'false-positive'
-    },
-    {
-      id: '6',
-      predictedQuestion: 'What are you seeing from competitors on pricing?',
-      wasAsked: true,
-      actualPhrasing: 'Any signs of irrational pricing or competitive pressure?',
-      similarity: 85,
-      recommendedAnswer: 'The competitive environment remains rational. We have not seen irrational pricing or elevated promotions...',
-      actualAnswer: 'Competitive environment is disciplined, no crazy pricing, our market share is holding well...',
-      category: 'Competition',
-      feedback: 'good-prediction'
-    },
-    {
-      id: '7',
-      predictedQuestion: 'Any update on the regulatory environment?',
-      wasAsked: false,
-      actualPhrasing: '',
-      similarity: 0,
-      recommendedAnswer: 'We continue to monitor regulatory developments closely. Current proposals would have minimal impact...',
-      actualAnswer: '',
-      category: 'Regulation / Risk',
-      feedback: 'false-positive'
-    },
-    {
-      id: '8',
-      predictedQuestion: '',
-      wasAsked: true,
-      actualPhrasing: 'Can you talk about your cloud migration progress and impact on margins?',
-      similarity: 0,
-      recommendedAnswer: '',
-      actualAnswer: 'Cloud migration is 60% complete, contributing to efficiency gains. Expect further margin benefit as we complete migration...',
-      category: 'Technology',
-      feedback: 'missed-question'
-    }
-  ];
-
-  const accuracyMetrics = {
-    questionsCorrectlyPredicted: 75,
-    recallTopConcerns: 88,
-    answerUsefulness: 82,
-    confidenceCalibration: 79,
-    missedCategories: ['Technology', 'ESG'],
-    falsePositives: 2
-  };
 
   return (
     <div className="p-6 space-y-6 max-w-[1800px] mx-auto">
@@ -231,14 +159,14 @@ export default function PredictionVsActual() {
           <p className="text-slate-600">Post-earnings analysis and model learning</p>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+          <Select value={selectedCompany} onValueChange={setSelectedCompany}>
             <SelectTrigger className="w-48">
-              <SelectValue />
+              <SelectValue placeholder="Select Company..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Q1 FY26">Q1 FY26</SelectItem>
-              <SelectItem value="Q4 FY25">Q4 FY25</SelectItem>
-              <SelectItem value="Q3 FY25">Q3 FY25</SelectItem>
+              {companies.map(company => (
+                <SelectItem key={company} value={company}>{company}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Button variant="outline" onClick={handleExportReport}>
@@ -297,151 +225,8 @@ export default function PredictionVsActual() {
         </div>
       </div>
 
-      {/* Prediction Accuracy Dashboard */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-slate-600">Prediction Rate</span>
-              <Target className="w-4 h-4 text-[#ED232A]" />
-            </div>
-            <div className="text-2xl font-semibold text-slate-900">{accuracyMetrics.questionsCorrectlyPredicted}%</div>
-            <div className="mt-2 h-1.5 bg-[#ED232A]/20 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-[#ED232A] transition-all"
-                style={{ width: `${accuracyMetrics.questionsCorrectlyPredicted}%` }}
-              />
-            </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-slate-600">Top Concern Recall</span>
-              <CheckCircle2 className="w-4 h-4 text-green-600" />
-            </div>
-            <div className="text-2xl font-semibold text-slate-900">{accuracyMetrics.recallTopConcerns}%</div>
-            <div className="mt-2 h-1.5 bg-[#ED232A]/20 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-[#ED232A] transition-all"
-                style={{ width: `${accuracyMetrics.recallTopConcerns}%` }}
-              />
-            </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-slate-600">Answer Usefulness</span>
-              <Brain className="w-4 h-4 text-[#ED232A]" />
-            </div>
-            <div className="text-2xl font-semibold text-slate-900">{accuracyMetrics.answerUsefulness}%</div>
-            <div className="mt-2 h-1.5 bg-[#ED232A]/20 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-[#ED232A] transition-all"
-                style={{ width: `${accuracyMetrics.answerUsefulness}%` }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-slate-600">Confidence Calibration</span>
-              <TrendingUp className="w-4 h-4 text-[#ED232A]" />
-            </div>
-            <div className="text-2xl font-semibold text-slate-900">{accuracyMetrics.confidenceCalibration}%</div>
-            <div className="mt-2 h-1.5 bg-[#ED232A]/20 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-[#ED232A] transition-all"
-                style={{ width: `${accuracyMetrics.confidenceCalibration}%` }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-slate-600">False Positives</span>
-              <AlertCircle className="w-4 h-4 text-amber-600" />
-            </div>
-            <div className="text-2xl font-semibold text-slate-900">{accuracyMetrics.falsePositives}</div>
-            <div className="text-xs text-slate-600 mt-1">Questions predicted</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-slate-600">Missed Categories</span>
-              <XCircle className="w-4 h-4 text-red-600" />
-            </div>
-            <div className="text-2xl font-semibold text-slate-900">{accuracyMetrics.missedCategories.length}</div>
-            <div className="text-xs text-slate-600 mt-1">Need improvement</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Model Improvement Insights */}
-      <Card className="border-[#ED232A]/30 bg-gradient-to-br from-[#FEE2E2] to-white">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-[#ED232A]" />
-            <CardTitle className="text-[#8B1319]">AI Learning Insights</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-3">
-              <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-[#ED232A]/20">
-                <TrendingDown className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <div className="font-medium text-slate-900 mb-1">Missed: Cloud migration focus</div>
-                  <div className="text-sm text-slate-600">
-                    Analysts focused more on technology transformation than predicted. Need stronger mapping to tech trends.
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-[#ED232A]/20">
-                <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <div className="font-medium text-slate-900 mb-1">Overpredicted: Regulatory concerns</div>
-                  <div className="text-sm text-slate-600">
-                    Regulatory questions did not materialize despite sector news. Recalibrate sector sensitivity weights.
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-[#ED232A]/20">
-                <TrendingUp className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <div className="font-medium text-slate-900 mb-1">Strong: Margin question prediction</div>
-                  <div className="text-sm text-slate-600">
-                    Correctly predicted all margin-related questions with high similarity. Maintain current approach.
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-[#ED232A]/20">
-                <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <div className="font-medium text-slate-900 mb-1">Improved: International segment focus</div>
-                  <div className="text-sm text-slate-600">
-                    Successfully predicted turnaround questions after Q4 FY25 learning. Model adaptation working well.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Predicted vs Actual Comparison Table */}
       <Card>
@@ -449,208 +234,111 @@ export default function PredictionVsActual() {
           <CardTitle>Predicted vs Actual Questions Comparison</CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="all">
-            <TabsList>
-              <TabsTrigger value="all">All ({comparisonData.length})</TabsTrigger>
-              <TabsTrigger value="correct">Correct Predictions ({comparisonData.filter(d => d.wasAsked && d.predictedQuestion).length})</TabsTrigger>
-              <TabsTrigger value="missed">Missed ({comparisonData.filter(d => d.feedback === 'missed-question').length})</TabsTrigger>
-              <TabsTrigger value="false">False Positives ({comparisonData.filter(d => d.feedback === 'false-positive').length})</TabsTrigger>
-            </TabsList>
+          {/* Quarter Tabs */}
+          {availableQuarters.length > 0 && (
+            <div className="flex gap-1 mb-4 overflow-x-auto">
+              {availableQuarters.map(qtr => (
+                <button
+                  key={qtr}
+                  onClick={() => setActiveQuarter(qtr)}
+                  className={`px-3 py-1.5 rounded-sm text-sm font-medium transition-all whitespace-nowrap ${
+                    activeQuarter === qtr
+                      ? 'bg-white shadow-sm text-slate-950 border border-slate-200'
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  {qtr}
+                </button>
+              ))}
+            </div>
+          )}
 
-            <TabsContent value="all" className="mt-4">
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[50px]">Status</TableHead>
-                      <TableHead className="min-w-[250px]">Predicted Question</TableHead>
-                      <TableHead className="min-w-[250px]">Actual Question</TableHead>
-                      <TableHead className="w-[100px]">Similarity</TableHead>
-                      <TableHead className="w-[150px]">Category</TableHead>
-                      <TableHead className="w-[100px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {comparisonData.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell>
-                          {row.wasAsked && row.predictedQuestion ? (
-                            <CheckCircle2 className="w-5 h-5 text-green-600" />
-                          ) : row.wasAsked && !row.predictedQuestion ? (
-                            <XCircle className="w-5 h-5 text-red-600" />
-                          ) : (
-                            <AlertCircle className="w-5 h-5 text-amber-600" />
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {row.predictedQuestion || <span className="text-slate-400 italic">Not predicted</span>}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {row.actualPhrasing || <span className="text-slate-400 italic">Not asked</span>}
-                        </TableCell>
-                        <TableCell>
-                          {row.similarity > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <Progress value={row.similarity} className="w-12 h-2" />
-                              <span className="text-sm font-medium">{row.similarity}%</span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 text-sm">N/A</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {row.category}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <Tag className="w-4 h-4" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-3xl">
-                              <DialogHeader>
-                                <DialogTitle>Question Feedback</DialogTitle>
-                                <DialogDescription>
-                                  Provide feedback to improve future predictions
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-4 py-4">
-                                <div className="grid md:grid-cols-2 gap-4">
-                                  <div className="p-4 bg-[#FEE2E2] rounded-lg border border-[#ED232A]/20">
-                                    <div className="text-sm font-medium text-[#8B1319] mb-2">Predicted</div>
-                                    <p className="text-sm text-[#991B1B]">{row.predictedQuestion || 'N/A'}</p>
+          {(() => {
+            const byQtr = comparisonState.filter(d => d.period === activeQuarter);
+            const filtered = byQtr.filter(d => {
+              if (activeTab === 'all') return true;
+              if (activeTab === 'correct') return d.wasAsked && d.predictedQuestion;
+              if (activeTab === 'missed') return d.feedback === 'missed-actual' || (d.wasAsked && !d.predictedQuestion);
+              if (activeTab === 'false') return !d.wasAsked;
+              return true;
+            });
+            return (
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList>
+                  <TabsTrigger value="all">All ({byQtr.length})</TabsTrigger>
+                  <TabsTrigger value="correct">Correct Predictions ({byQtr.filter(d => d.wasAsked && d.predictedQuestion).length})</TabsTrigger>
+                  <TabsTrigger value="missed">Missed ({byQtr.filter(d => d.feedback === 'missed-actual' || (d.wasAsked && !d.predictedQuestion)).length})</TabsTrigger>
+                  <TabsTrigger value="false">False Positives ({byQtr.filter(d => !d.wasAsked).length})</TabsTrigger>
+                </TabsList>
+                <TabsContent value={activeTab} className="mt-4">
+                  <div className="border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[50px]">Status</TableHead>
+                          <TableHead className="min-w-[250px]">Predicted Question</TableHead>
+                          <TableHead className="min-w-[250px]">Actual Question</TableHead>
+                          <TableHead className="w-[120px]">Similarity</TableHead>
+                          <TableHead className="w-[150px]">Category</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {comparisonLoading ? (
+                          <TableRow><TableCell colSpan={5} className="h-24 text-center"><div className="flex justify-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#ED232A]"></div></div></TableCell></TableRow>
+                        ) : filtered.length > 0 ? (
+                          filtered.map(row => (
+                            <TableRow key={row.id}>
+                              <TableCell>
+                                {row.wasAsked && row.predictedQuestion ? (
+                                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                ) : row.wasAsked && !row.predictedQuestion ? (
+                                  <XCircle className="w-5 h-5 text-red-600" />
+                                ) : (
+                                  <AlertCircle className="w-5 h-5 text-amber-600" />
+                                )}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {row.predictedQuestion || <span className="text-slate-400 italic">Not predicted</span>}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {row.actualPhrasing || <span className="text-slate-400 italic">Not asked</span>}
+                              </TableCell>
+                              <TableCell>
+                                {row.similarity > 0 ? (
+                                  <div className="flex items-center gap-2">
+                                    <Progress value={row.similarity} className="w-12 h-2" />
+                                    <span className="text-sm font-medium">{row.similarity}%</span>
                                   </div>
-                                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                                    <div className="text-sm font-medium text-green-900 mb-2">Actual</div>
-                                    <p className="text-sm text-green-800">{row.actualPhrasing || 'N/A'}</p>
-                                  </div>
-                                </div>
-                                
-                                <div>
-                                  <label className="text-sm font-medium text-slate-700 mb-2 block">
-                                    Feedback Type
-                                  </label>
-                                  <Select defaultValue={row.feedback}>
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="good-prediction">Good Prediction</SelectItem>
-                                      <SelectItem value="missed-nuance">Missed Nuance</SelectItem>
-                                      <SelectItem value="wrong-priority">Wrong Priority</SelectItem>
-                                      <SelectItem value="good-answer">Good Answer</SelectItem>
-                                      <SelectItem value="weak-answer">Weak Answer</SelectItem>
-                                      <SelectItem value="needs-retraining">Needs Retraining</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                
-                                <div>
-                                  <label className="text-sm font-medium text-slate-700 mb-2 block">
-                                    Notes
-                                  </label>
-                                  <Textarea 
-                                    placeholder="Add specific feedback or corrections..."
-                                    className="min-h-[100px]"
-                                  />
-                                </div>
-                                
-                                <div className="flex gap-2">
-                                  <Button className="flex-1 bg-[#ED232A] hover:bg-[#B91C1C]" onClick={handleSaveFeedback}>
-                                    Save Feedback
-                                  </Button>
-                                  <Button variant="outline" className="flex-1" onClick={handleApproveForLearning}>
-                                    Approve for Learning
-                                  </Button>
-                                </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="correct" className="mt-4">
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Predicted Question</TableHead>
-                      <TableHead>Actual Question</TableHead>
-                      <TableHead>Similarity</TableHead>
-                      <TableHead>Category</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {comparisonData.filter(d => d.wasAsked && d.predictedQuestion).map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="text-sm">{row.predictedQuestion}</TableCell>
-                        <TableCell className="text-sm">{row.actualPhrasing}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Progress value={row.similarity} className="w-12 h-2" />
-                            <span className="text-sm font-medium">{row.similarity}%</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">{row.category}</Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="missed" className="mt-4">
-              <div className="space-y-4">
-                {comparisonData.filter(d => d.feedback === 'missed-question').map((row) => (
-                  <div key={row.id} className="p-4 border border-red-200 bg-red-50 rounded-lg">
-                    <div className="flex items-start gap-3 mb-3">
-                      <XCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1">
-                        <div className="font-medium text-red-900 mb-1">Missed Question</div>
-                        <p className="text-sm text-red-800 mb-2">{row.actualPhrasing}</p>
-                        <Badge variant="outline">{row.category}</Badge>
-                      </div>
-                    </div>
-                    <div className="pl-8">
-                      <div className="text-sm text-red-700 mb-2">Actual Answer Given:</div>
-                      <p className="text-sm text-red-800 bg-white p-3 rounded border border-red-200">
-                        {row.actualAnswer}
-                      </p>
-                    </div>
+                                ) : (
+                                  <span className="text-slate-400 text-sm">N/A</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className="text-xs">{row.category}</Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={5} className="h-24 text-center text-slate-500">
+                              {!selectedCompany
+                                ? 'Select a company above to view data.'
+                                : comparisonLoading ? '' : 'No data found for this quarter.'}
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
-                ))}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="false" className="mt-4">
-              <div className="space-y-4">
-                {comparisonData.filter(d => d.feedback === 'false-positive').map((row) => (
-                  <div key={row.id} className="p-4 border border-amber-200 bg-amber-50 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1">
-                        <div className="font-medium text-amber-900 mb-1">False Positive Prediction</div>
-                        <p className="text-sm text-amber-800 mb-2">{row.predictedQuestion}</p>
-                        <Badge variant="outline">{row.category}</Badge>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
+                </TabsContent>
+              </Tabs>
+            );
+          })()}
         </CardContent>
       </Card>
+
+
+
 
       {/* Feedback Loop Controls */}
       <Card>
