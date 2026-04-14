@@ -517,6 +517,7 @@ export default function AdminDashboard() {
   const [activeComparisonQuarter, setActiveComparisonQuarter] = useState<string>("");
   const [editingComparison, setEditingComparison] = useState<ComparisonData | null>(null);
   const [activeComparisonTab, setActiveComparisonTab] = useState("all");
+  const [isRecalculating, setIsRecalculating] = useState(false);
 
   useEffect(() => {
     if (!reviewCompany) return;
@@ -930,12 +931,60 @@ export default function AdminDashboard() {
     });
   };
 
-  const handleSaveComparison = () => {
-    if (!editingComparison) return;
-    setComparisonState(prev => 
-      prev.map(c => c.id === editingComparison.id ? editingComparison : c)
+  const handleRecalculateSimilarity = async () => {
+    if (!reviewCompany || !activeComparisonQuarter) return;
+    const confirmed = confirm(
+      `This will delete all existing comparisons for ${activeComparisonQuarter} and recalculate them using GPT-4o.\n\nAny manually edited similarity scores will be reset.\n\nContinue?`
     );
-    setEditingComparison(null);
+    if (!confirmed) return;
+
+    setIsRecalculating(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/comparisons/recalculate?company=${encodeURIComponent(reviewCompany)}&period=${encodeURIComponent(activeComparisonQuarter)}`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Recalculation failed");
+
+      // Refresh comparison data for the whole company
+      setComparisonLoading(true);
+      const refreshRes = await fetch(`${API_URL}/api/comparisons?company=${encodeURIComponent(reviewCompany)}`);
+      const refreshData = await refreshRes.json();
+      if (refreshData.data) {
+        setComparisonState(refreshData.data);
+        const periods = Array.from(new Set(refreshData.data.map((q: any) => q.period))) as string[];
+        periods.sort((a, b) => {
+          const parseP = (p: string) => { const m = p.match(/Q(\d)\s+FY(\d+)/); return m ? parseInt(m[2]) * 10 + parseInt(m[1]) : 0; };
+          return parseP(a) - parseP(b);
+        });
+        setAvailableComparisonQuarters(periods);
+      }
+      alert(`✅ ${data.message}`);
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsRecalculating(false);
+      setComparisonLoading(false);
+    }
+  };
+
+  const handleSaveComparison = async () => {
+    if (!editingComparison) return;
+    try {
+      const res = await fetch(`${API_URL}/api/comparisons/${editingComparison.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ similarity_score: editingComparison.similarity })
+      });
+      if (!res.ok) throw new Error("Failed to update comparison");
+      setComparisonState(prev =>
+        prev.map(c => c.id === editingComparison.id ? { ...c, similarity: editingComparison.similarity } : c)
+      );
+      setEditingComparison(null);
+    } catch (err: any) {
+      alert("Error saving comparison: " + err.message);
+    }
   };
 
   const handleSavePredictedQuestion = async () => {
@@ -1419,8 +1468,16 @@ export default function AdminDashboard() {
                       );
                     })()}
                   </div>
-                  <Button className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 mt-[52px]">
-                    Calculate Similarity
+                  <Button 
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 mt-[52px] disabled:opacity-50"
+                    onClick={handleRecalculateSimilarity}
+                    disabled={isRecalculating || !activeComparisonQuarter}
+                  >
+                    {isRecalculating ? (
+                      <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-600 mr-2" /> Recalculating...</>
+                    ) : (
+                      "Calculate Similarity"
+                    )}
                   </Button>
                 </div>
 

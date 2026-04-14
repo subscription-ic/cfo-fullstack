@@ -532,6 +532,95 @@ def get_comparisons(company: Optional[str] = Query(default=None)):
 
 
 
+class ComparisonUpdate(BaseModel):
+    similarity_score: Optional[float] = None
+
+@app.put("/api/comparisons/{comparison_id}")
+def update_comparison(comparison_id: str, req: ComparisonUpdate):
+    """Update similarity score of a predicted_vs_actual_comparisons row."""
+    try:
+        update_data = {}
+        if req.similarity_score is not None:
+            update_data["similarity_score"] = req.similarity_score
+
+        if not update_data:
+            return {"message": "No fields to update"}
+
+        upd_res = supabase.table("predicted_vs_actual_comparisons").update(update_data).eq("id", comparison_id).execute()
+        if not upd_res.data:
+            raise HTTPException(status_code=404, detail="Comparison record not found")
+
+        return {"message": "Comparison updated successfully"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.post("/api/comparisons/recalculate")
+async def recalculate_comparisons(company: str = Query(...), period: str = Query(...)):
+    """
+    Delete all comparison rows for a company+period and rerun GPT-4o similarity scoring.
+    period format: "Q3 FY26"
+    """
+    try:
+        from services.comparison import run_comparison
+
+        # Parse period
+        parts = period.split(" FY")
+        if len(parts) != 2:
+            raise HTTPException(status_code=400, detail="Invalid period format. Use 'Q3 FY26'")
+        quarter = parts[0].strip()
+        year_suffix = parts[1].strip()
+        fiscal_year = 2000 + int(year_suffix) if len(year_suffix) == 2 else int(year_suffix)
+
+        # Lookup company
+        comp_resp = supabase.table("companies").select("id").ilike("name", f"%{company}%").execute()
+        if not comp_resp.data:
+            raise HTTPException(status_code=404, detail=f"Company '{company}' not found")
+        company_id = comp_resp.data[0]["id"]
+
+        # Lookup earnings_call for that quarter
+        call_resp = supabase.table("earnings_calls").select("id").eq("company_id", company_id).eq("fiscal_year", fiscal_year).eq("quarter", quarter).execute()
+        if not call_resp.data:
+            raise HTTPException(status_code=404, detail=f"No earnings call found for {period}")
+        earnings_call_id = call_resp.data[0]["id"]
+
+        # Delete existing comparisons for this call
+        supabase.table("predicted_vs_actual_comparisons").delete().eq("earnings_call_id", earnings_call_id).execute()
+
+        # Fetch current predicted and actual questions
+        pred_resp = supabase.table("predicted_questions").select("id, question_text").eq("earnings_call_id", earnings_call_id).execute()
+        act_resp = supabase.table("actual_questions").select("id, question_text").eq("earnings_call_id", earnings_call_id).execute()
+
+        if not pred_resp.data or not act_resp.data:
+            return {"message": "Comparisons cleared. No predictions or actuals to compare.", "data": []}
+
+        pred_list = [{"id": p["id"], "question": p["question_text"]} for p in pred_resp.data]
+        act_list  = [{"id": a["id"], "question": a["question_text"]} for a in act_resp.data]
+
+        # Run GPT-4o comparison
+        comparisons = await run_comparison(pred_list, act_list)
+
+        # Insert new comparison rows
+        if comparisons:
+            insert_payload = [
+                {
+                    "earnings_call_id": earnings_call_id,
+                    "predicted_question_id": c.get("predicted_id"),
+                    "actual_question_id": c.get("matched_actual_id"),
+                    "was_asked": c.get("was_asked", False),
+                    "similarity_score": c.get("similarity_score", 0),
+                    "feedback": c.get("feedback")
+                }
+                for c in comparisons
+            ]
+            supabase.table("predicted_vs_actual_comparisons").insert(insert_payload).execute()
+
+        return {"message": f"Recalculated {len(comparisons)} comparison(s) for {period}", "count": len(comparisons)}
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
 class PredictedQuestionCreate(BaseModel):
     company_name: str
     period: str
