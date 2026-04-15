@@ -36,11 +36,18 @@ Predict 15-25 highly specific analyst questions. Return ONLY a JSON object:
   {{"question": "...", "rationale": "...", "basis_quarters": ["Q1-2025"],
    "category": "Revenue|Margins|Debt/Capital|Guidance|Operations|Macro/Sector|Management|Other",
    "outlook_type": "Forward Looking|Backward Looking|Mixed",
-   "suggested_answer": "A concise management-perspective answer the company is likely to give (2-4 sentences).",
+   "suggested_answer": "A detailed, comprehensive management-perspective answer the company is likely to give. Include specific numbers, percentages, growth rates, segment-wise breakdowns, and year-on-year or quarter-on-quarter comparisons wherever relevant. Reference actual figures from the financial results provided. The answer should mirror the depth and tone of a real CFO/CEO earnings call response — structured, data-backed, and covering the nuances analysts care about. Length should be 6-10 sentences or more if needed to be thorough.",
    "risk": "High|Medium|Low"}}
 ]}}
 
-For "suggested_answer": draft the response management is likely to give based on the financial results and historical call tone.
+For "suggested_answer": draft a detailed, data-rich response the management is likely to give. It must:
+- Cite specific financial metrics (revenues, margins, EBITDA, PAT, growth %, etc.) from the provided PDFs
+- Include segment-wise or geography-wise breakdowns where applicable
+- Reference YoY and QoQ trends
+- Address forward guidance or management commentary on outlook
+- Reflect the company's historical communication tone from past earnings calls
+- Be comprehensive enough that a CFO could read it verbatim on a call
+
 For "risk": rate how sensitive/risky the question is for management — High = likely to cause discomfort or reveal weakness, Medium = neutral, Low = routine/safe."""
 
 
