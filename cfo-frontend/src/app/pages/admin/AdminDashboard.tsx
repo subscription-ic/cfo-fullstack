@@ -56,7 +56,7 @@ import {
   Loader2,
   Sparkles,
   RefreshCw,
-  Brain,
+  // Brain,
 } from "lucide-react";
 import { Progress } from "../../components/ui/progress";
 import { toast } from "sonner";
@@ -78,7 +78,7 @@ import {
   type ActualEarningsQARow,
   type PredictedQA,
 } from "../../utils/api";
-import AnalysisPanel from "./AnalysisPanel";
+// import AnalysisPanel from "./AnalysisPanel";
 
 interface UploadedFile {
   id: string;
@@ -393,7 +393,7 @@ export default function AdminDashboard() {
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [qgenSubmitting, setQgenSubmitting] = useState(false);
 
-  const [adminMainTab, setAdminMainTab] = useState<"generate" | "review" | "analysis">("generate");
+  const [adminMainTab, setAdminMainTab] = useState<"generate" | "review">("generate");
   const [reviewCompany, setReviewCompany] = useState("HDFC");
   const [companyPicker, setCompanyPicker] = useState<string[]>(["HDFC"]);
   const [actualLoading, setActualLoading] = useState(false);
@@ -600,7 +600,7 @@ export default function AdminDashboard() {
   );
 
   useEffect(() => {
-    if (adminMainTab === "analysis" || (adminMainTab === "generate" && uploadDocTab === "historical")) {
+    if (adminMainTab === "generate" && uploadDocTab === "historical") {
       void loadDocumentCatalog();
     }
   }, [adminMainTab, uploadDocTab, loadDocumentCatalog]);
@@ -1006,7 +1006,7 @@ export default function AdminDashboard() {
 
       <Tabs
         value={adminMainTab}
-        onValueChange={(v) => setAdminMainTab(v as "generate" | "review" | "analysis")}
+        onValueChange={(v) => setAdminMainTab(v as "generate" | "review")}
         className="w-full"
       >
         <TabsList className="mb-10 flex w-full max-w-2xl bg-slate-200/80 p-2 rounded-2xl mx-auto shadow-inner">
@@ -1028,7 +1028,7 @@ export default function AdminDashboard() {
               Review Q&A
             </div>
           </TabsTrigger>
-          <TabsTrigger
+          {/* <TabsTrigger
             value="analysis"
             className="flex-1 rounded-xl py-4 text-lg font-medium text-slate-600 data-[state=active]:bg-[#002850] data-[state=active]:text-white data-[state=active]:shadow-lg transition-all"
           >
@@ -1036,7 +1036,7 @@ export default function AdminDashboard() {
               <Brain className="w-5 h-5" />
               Analysis
             </div>
-          </TabsTrigger>
+          </TabsTrigger> */}
         </TabsList>
 
         <TabsContent value="review">
@@ -1961,12 +1961,12 @@ export default function AdminDashboard() {
           </div>
         </TabsContent>
 
-        <TabsContent value="analysis">
+        {/* <TabsContent value="analysis">
           <AnalysisPanel
             documents={documentsCatalog}
             companies={companyOptions}
           />
-        </TabsContent>
+        </TabsContent> */}
       </Tabs>
     </div>
   );
