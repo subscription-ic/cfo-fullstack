@@ -1924,7 +1924,7 @@ export default function AdminDashboard() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
+                {/* <div className="space-y-2">
                   <Label htmlFor="newCompany">Add company to list</Label>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <Input
@@ -1954,7 +1954,7 @@ export default function AdminDashboard() {
                       Add
                     </Button>
                   </div>
-                </div>
+                </div> */}
               </CardContent>
             </Card>
 
