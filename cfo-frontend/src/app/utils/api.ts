@@ -18,9 +18,12 @@ export function clearAccessToken(): void {
 
 export interface PredictedQA {
   id: string;
+  period?: string;
   company: string;
-  predicted_question: string;
-  suggested_answer: string;
+  predicted_question?: string;
+  question?: string;
+  suggested_answer?: string;
+  answer?: string;
   category: string;
   category_l1?: string | null;
   category_l2?: string | null;
