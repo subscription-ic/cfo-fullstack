@@ -461,6 +461,77 @@ export default function PredictionVsActual() {
         </div>
       </div>
 
+      {/* Performance Metrics — theme level */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Performance Metrics — By Theme (L1 Category)</CardTitle>
+          <p className="text-sm text-slate-600 mt-1">
+            Computed for {selectedQuarter} from{' '}
+            {quarterFilteredPredicted.length} predicted and{' '}
+            {quarterFilteredActuals.length} actual questions.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[180px]">Theme</TableHead>
+                  <TableHead className="text-right">TP</TableHead>
+                  <TableHead className="text-right">FP</TableHead>
+                  <TableHead className="text-right">FN</TableHead>
+                  <TableHead className="text-right">Precision</TableHead>
+                  <TableHead className="text-right">Recall</TableHead>
+                  <TableHead className="text-right">F1</TableHead>
+                  <TableHead className="text-right">Matching Rate</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {performanceMetrics.perTheme.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="text-center text-sm text-slate-500 py-6"
+                    >
+                      No predicted or actual questions for this quarter yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  performanceMetrics.perTheme.map((m) => (
+                    <TableRow key={m.theme}>
+                      <TableCell className="font-medium text-slate-800">
+                        {m.theme}
+                      </TableCell>
+                      <TableCell className="text-right">{m.tp}</TableCell>
+                      <TableCell className="text-right">{m.fp}</TableCell>
+                      <TableCell className="text-right">{m.fn}</TableCell>
+                      <TableCell className="text-right">
+                        {pct(m.precision)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {pct(m.recall)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold text-[#8B1319]">
+                        {pct(m.f1)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {pct(m.matchingRate)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            TP = predicted question actually asked (linked); FP = predicted
+            question not asked; FN = analyst question with no matching
+            prediction. Precision = TP / (TP+FP); Recall = Matching Rate =
+            TP / (TP+FN); F1 = harmonic mean.
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Predicted vs Actual Comparison Table */}
       <Card>
         <CardHeader>
