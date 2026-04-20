@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
     def root():
         return {"message": "CFO Earnings Intelligence API is running"}
 
+
     application.include_router(auth_api.router)
     application.include_router(ingestion_api.router)
     application.include_router(documents_api.router)
