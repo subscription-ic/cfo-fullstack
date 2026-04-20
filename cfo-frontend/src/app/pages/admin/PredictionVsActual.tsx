@@ -1,5 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import {
+  fetchPredictedQuestions,
+  fetchActualEarningsQA,
+  fetchCompanies,
+  type PredictedQA,
+  type ActualEarningsQARow,
+} from '../../utils/api';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
@@ -29,10 +36,226 @@ interface ComparisonData {
   feedback: string;
 }
 
+function periodLabelOf(r: ActualEarningsQARow): string {
+  if (r.period_label && r.period_label.trim()) return r.period_label.trim();
+  if (r.quarter && r.fiscal_year) {
+    return `${r.quarter} FY${String(r.fiscal_year).slice(-2)}`;
+  }
+  return '—';
+}
+
+interface ThemeMetrics {
+  theme: string;
+  tp: number;
+  fp: number;
+  fn: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  matchingRate: number;
+}
+
+function themeOf(
+  row: { category_l1?: string | null; category?: string | null },
+): string {
+  const l1 = (row.category_l1 ?? '').trim();
+  if (l1) return l1;
+  const flat = (row.category ?? '').trim();
+  return flat || 'Uncategorized';
+}
+
+function computeMetrics(
+  predicted: PredictedQA[],
+  actuals: ActualEarningsQARow[],
+): { overall: ThemeMetrics; perTheme: ThemeMetrics[] } {
+  const linkedPredIds = new Set<string>();
+  for (const a of actuals) {
+    if (a.predicted_qa_id) linkedPredIds.add(a.predicted_qa_id);
+  }
+
+  const row = (theme: string, tp: number, fp: number, fn: number): ThemeMetrics => {
+    const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
+    const recall = tp + fn > 0 ? tp / (tp + fn) : 0;
+    const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0;
+    const matchingRate = recall;
+    return { theme, tp, fp, fn, precision, recall, f1, matchingRate };
+  };
+
+  // Overall
+  const overallTP = actuals.filter((a) => !!a.predicted_qa_id).length;
+  const overallFN = actuals.length - overallTP;
+  const overallFP = predicted.filter((p) => !linkedPredIds.has(p.id)).length;
+  const overall = row('Overall', overallTP, overallFP, overallFN);
+
+  // Per-theme (union of L1 themes across both sides)
+  const themes = new Set<string>();
+  for (const p of predicted) themes.add(themeOf(p));
+  for (const a of actuals) themes.add(themeOf(a));
+
+  const perTheme: ThemeMetrics[] = [];
+  for (const t of themes) {
+    const predInTheme = predicted.filter((p) => themeOf(p) === t);
+    const actualsInTheme = actuals.filter((a) => themeOf(a) === t);
+    const tp = actualsInTheme.filter((a) => !!a.predicted_qa_id).length;
+    const fn = actualsInTheme.length - tp;
+    const fp = predInTheme.filter((p) => !linkedPredIds.has(p.id)).length;
+    perTheme.push(row(t, tp, fp, fn));
+  }
+  perTheme.sort((a, b) => b.tp + b.fp + b.fn - (a.tp + a.fp + a.fn));
+
+  return { overall, perTheme };
+}
+
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+
+function buildLiveComparison(
+  predicted: PredictedQA[],
+  actuals: ActualEarningsQARow[],
+): ComparisonData[] {
+  const rows: ComparisonData[] = [];
+  const usedPred = new Set<string>();
+  const usedActual = new Set<string>();
+
+  for (const a of actuals) {
+    if (!a.predicted_qa_id) continue;
+    const p = predicted.find((x) => x.id === a.predicted_qa_id);
+    if (!p || usedPred.has(p.id)) continue;
+    usedPred.add(p.id);
+    usedActual.add(a.id);
+    rows.push({
+      id: `m-${p.id}-${a.id}`,
+      predictedQuestion: p.predicted_question,
+      wasAsked: true,
+      actualPhrasing: a.question,
+      similarity: Math.round(Number(a.similarity_score ?? 0)),
+      recommendedAnswer: p.suggested_answer ?? '',
+      actualAnswer: a.answer ?? '',
+      category: themeOf(p) || themeOf(a),
+      feedback: 'good-prediction',
+    });
+  }
+
+  for (const p of predicted) {
+    if (usedPred.has(p.id)) continue;
+    rows.push({
+      id: `fp-${p.id}`,
+      predictedQuestion: p.predicted_question,
+      wasAsked: false,
+      actualPhrasing: '',
+      similarity: 0,
+      recommendedAnswer: p.suggested_answer ?? '',
+      actualAnswer: '',
+      category: themeOf(p),
+      feedback: 'false-positive',
+    });
+  }
+
+  for (const a of actuals) {
+    if (usedActual.has(a.id)) continue;
+    rows.push({
+      id: `miss-${a.id}`,
+      predictedQuestion: '',
+      wasAsked: true,
+      actualPhrasing: a.question,
+      similarity: 0,
+      recommendedAnswer: '',
+      actualAnswer: a.answer ?? '',
+      category: themeOf(a),
+      feedback: 'missed-question',
+    });
+  }
+
+  return rows;
+}
+
 export default function PredictionVsActual() {
   const navigate = useNavigate();
+  const [companies, setCompanies] = useState<string[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState<string>('');
+  const [predicted, setPredicted] = useState<PredictedQA[]>([]);
+  const [actuals, setActuals] = useState<ActualEarningsQARow[]>([]);
+  const [loading, setLoading] = useState(false);
   const [selectedQuarter, setSelectedQuarter] = useState('Q1 FY26');
-  
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCompanies()
+      .then((list) => {
+        if (cancelled) return;
+        setCompanies(list);
+        if (list.length && !selectedCompany) setSelectedCompany(list[0]);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCompany) return;
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      fetchPredictedQuestions(selectedCompany),
+      fetchActualEarningsQA(selectedCompany),
+    ])
+      .then(([p, a]) => {
+        if (cancelled) return;
+        setPredicted(p);
+        setActuals(a);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPredicted([]);
+          setActuals([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompany]);
+
+  const availableQuarters = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of actuals) {
+      const label = periodLabelOf(a);
+      if (label !== '—') set.add(label);
+    }
+    for (const p of predicted) {
+      if (p.quarter && p.fiscal_year) {
+        set.add(`${p.quarter} FY${String(p.fiscal_year).slice(-2)}`);
+      }
+    }
+    return Array.from(set).sort().reverse();
+  }, [actuals, predicted]);
+
+  useEffect(() => {
+    if (availableQuarters.length === 0) return;
+    if (!availableQuarters.includes(selectedQuarter)) {
+      setSelectedQuarter(availableQuarters[0]);
+    }
+  }, [availableQuarters, selectedQuarter]);
+
+  const quarterFilteredActuals = useMemo(
+    () => actuals.filter((a) => periodLabelOf(a) === selectedQuarter),
+    [actuals, selectedQuarter],
+  );
+
+  const quarterFilteredPredicted = useMemo(
+    () =>
+      predicted.filter((p) => {
+        if (!p.quarter || !p.fiscal_year) return false;
+        return (
+          `${p.quarter} FY${String(p.fiscal_year).slice(-2)}` === selectedQuarter
+        );
+      }),
+    [predicted, selectedQuarter],
+  );
+
+
   // Handler functions
   const handleExportReport = () => {
     toast.loading('Generating Learning Report...', { id: 'learning-report' });
@@ -110,96 +333,15 @@ export default function PredictionVsActual() {
     });
   };
   
-  const comparisonData: ComparisonData[] = [
-    {
-      id: '1',
-      predictedQuestion: 'Can you walk through the key drivers of the 120 bps margin expansion this quarter?',
-      wasAsked: true,
-      actualPhrasing: 'Walk us through the margin bridge this quarter and sustainability into Q2?',
-      similarity: 92,
-      recommendedAnswer: 'The 120 basis point expansion was driven by three factors: operational efficiency gains (60 bps), favorable product mix (40 bps), and pricing realization (20 bps)...',
-      actualAnswer: 'Three main drivers: efficiency improvements from automation, premium mix shift, and pricing actions. We expect most of these gains to sustain...',
-      category: 'Margin / Profitability',
-      feedback: 'good-prediction'
-    },
-    {
-      id: '2',
-      predictedQuestion: 'What gives you confidence in the full-year revenue guidance?',
-      wasAsked: true,
-      actualPhrasing: 'Your guidance implies deceleration in Q2 - what are the specific headwinds?',
-      similarity: 78,
-      recommendedAnswer: 'Our guidance reflects normal seasonality, tougher prior year comparisons, and a prudent approach...',
-      actualAnswer: 'Q2 has typical seasonal patterns, we\'re lapping a very strong Q2 last year, and being appropriately conservative given macro uncertainty...',
-      category: 'Guidance',
-      feedback: 'good-prediction'
-    },
-    {
-      id: '3',
-      predictedQuestion: 'How much of your revenue growth is coming from volume versus price?',
-      wasAsked: true,
-      actualPhrasing: 'Can you break out volume and price contribution to growth?',
-      similarity: 95,
-      recommendedAnswer: 'Q1 growth was 5.5% volume and 3.0% price. We expect this mix to hold through the year...',
-      actualAnswer: 'Volume contributed 5.5 points, pricing 3 points. Both sustainable through the year given our value proposition...',
-      category: 'Revenue / Growth',
-      feedback: 'good-prediction'
-    },
-    {
-      id: '4',
-      predictedQuestion: 'What specific actions are you taking to turn around international?',
-      wasAsked: true,
-      actualPhrasing: 'International remains weak - what\'s the turnaround plan and timeline?',
-      similarity: 88,
-      recommendedAnswer: 'We have a three-pronged plan: new leadership in Europe, localized product portfolio launching Q3, and streamlined go-to-market...',
-      actualAnswer: 'New Europe leadership is in place, we\'re launching localized products in Q3, and simplifying our distribution model. Expect stabilization Q2, growth by Q4...',
-      category: 'Region / Segment',
-      feedback: 'good-prediction'
-    },
-    {
-      id: '5',
-      predictedQuestion: 'Can you provide more color on working capital trends?',
-      wasAsked: false,
-      actualPhrasing: '',
-      similarity: 0,
-      recommendedAnswer: 'Cash conversion was 92% in Q1, slightly below our 95% target due to planned inventory build...',
-      actualAnswer: '',
-      category: 'Capital Allocation',
-      feedback: 'false-positive'
-    },
-    {
-      id: '6',
-      predictedQuestion: 'What are you seeing from competitors on pricing?',
-      wasAsked: true,
-      actualPhrasing: 'Any signs of irrational pricing or competitive pressure?',
-      similarity: 85,
-      recommendedAnswer: 'The competitive environment remains rational. We have not seen irrational pricing or elevated promotions...',
-      actualAnswer: 'Competitive environment is disciplined, no crazy pricing, our market share is holding well...',
-      category: 'Competition',
-      feedback: 'good-prediction'
-    },
-    {
-      id: '7',
-      predictedQuestion: 'Any update on the regulatory environment?',
-      wasAsked: false,
-      actualPhrasing: '',
-      similarity: 0,
-      recommendedAnswer: 'We continue to monitor regulatory developments closely. Current proposals would have minimal impact...',
-      actualAnswer: '',
-      category: 'Regulation / Risk',
-      feedback: 'false-positive'
-    },
-    {
-      id: '8',
-      predictedQuestion: '',
-      wasAsked: true,
-      actualPhrasing: 'Can you talk about your cloud migration progress and impact on margins?',
-      similarity: 0,
-      recommendedAnswer: '',
-      actualAnswer: 'Cloud migration is 60% complete, contributing to efficiency gains. Expect further margin benefit as we complete migration...',
-      category: 'Technology',
-      feedback: 'missed-question'
-    }
-  ];
+  const comparisonData: ComparisonData[] = useMemo(
+    () => buildLiveComparison(quarterFilteredPredicted, quarterFilteredActuals),
+    [quarterFilteredPredicted, quarterFilteredActuals],
+  );
+
+  const performanceMetrics = useMemo(
+    () => computeMetrics(quarterFilteredPredicted, quarterFilteredActuals),
+    [quarterFilteredPredicted, quarterFilteredActuals],
+  );
 
   const accuracyMetrics = {
     questionsCorrectlyPredicted: 75,
@@ -231,14 +373,36 @@ export default function PredictionVsActual() {
           <p className="text-slate-600">Post-earnings analysis and model learning</p>
         </div>
         <div className="flex items-center gap-3">
+          {companies.length > 0 && (
+            <Select value={selectedCompany} onValueChange={setSelectedCompany}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Company" />
+              </SelectTrigger>
+              <SelectContent>
+                {companies.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
             <SelectTrigger className="w-48">
-              <SelectValue />
+              <SelectValue placeholder={loading ? 'Loading…' : 'Quarter'} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Q1 FY26">Q1 FY26</SelectItem>
-              <SelectItem value="Q4 FY25">Q4 FY25</SelectItem>
-              <SelectItem value="Q3 FY25">Q3 FY25</SelectItem>
+              {availableQuarters.length === 0 ? (
+                <SelectItem value="__none__" disabled>
+                  No transcripts uploaded yet
+                </SelectItem>
+              ) : (
+                availableQuarters.map((q) => (
+                  <SelectItem key={q} value={q}>
+                    {q}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
           <Button variant="outline" onClick={handleExportReport}>
@@ -438,6 +602,169 @@ export default function PredictionVsActual() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Performance Metrics — theme level + question level */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Performance Metrics — Precision / Recall / F1</CardTitle>
+          <p className="text-sm text-slate-600 mt-1">
+            Computed for {selectedQuarter} from{' '}
+            {quarterFilteredPredicted.length} predicted and{' '}
+            {quarterFilteredActuals.length} actual questions. A predicted
+            question counts as a true positive only when an actual question
+            links to it with a high similarity score AND matching category.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Overall */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {(() => {
+              const m = performanceMetrics.overall;
+              const items: Array<[string, string]> = [
+                ['Precision', pct(m.precision)],
+                ['Recall', pct(m.recall)],
+                ['F1 Score', pct(m.f1)],
+                ['Matching Rate', pct(m.matchingRate)],
+                ['TP / FP / FN', `${m.tp} / ${m.fp} / ${m.fn}`],
+              ];
+              return items.map(([label, value]) => (
+                <div
+                  key={label}
+                  className="p-3 rounded-lg border border-[#ED232A]/20 bg-[#FEE2E2]/40"
+                >
+                  <div className="text-xs text-slate-600">{label}</div>
+                  <div className="text-2xl font-semibold text-[#8B1319]">
+                    {value}
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+
+          {/* Per-theme */}
+          <div>
+            <h3 className="font-medium text-slate-900 mb-2">
+              By theme (L1 category)
+            </h3>
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[180px]">Theme</TableHead>
+                    <TableHead className="text-right">TP</TableHead>
+                    <TableHead className="text-right">FP</TableHead>
+                    <TableHead className="text-right">FN</TableHead>
+                    <TableHead className="text-right">Precision</TableHead>
+                    <TableHead className="text-right">Recall</TableHead>
+                    <TableHead className="text-right">F1</TableHead>
+                    <TableHead className="text-right">Matching Rate</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {performanceMetrics.perTheme.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={8}
+                        className="text-center text-sm text-slate-500 py-6"
+                      >
+                        No predicted or actual questions for this quarter yet.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    performanceMetrics.perTheme.map((m) => (
+                      <TableRow key={m.theme}>
+                        <TableCell className="font-medium text-slate-800">
+                          {m.theme}
+                        </TableCell>
+                        <TableCell className="text-right">{m.tp}</TableCell>
+                        <TableCell className="text-right">{m.fp}</TableCell>
+                        <TableCell className="text-right">{m.fn}</TableCell>
+                        <TableCell className="text-right">
+                          {pct(m.precision)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {pct(m.recall)}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold text-[#8B1319]">
+                          {pct(m.f1)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {pct(m.matchingRate)}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              TP = predicted question actually asked (linked); FP = predicted
+              question not asked; FN = analyst question with no matching
+              prediction. Precision = TP / (TP+FP); Recall = Matching Rate =
+              TP / (TP+FN); F1 = harmonic mean.
+            </p>
+          </div>
+
+          {/* Question-level breakdown */}
+          <div>
+            <h3 className="font-medium text-slate-900 mb-2">
+              Question-level status ({comparisonData.length})
+            </h3>
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[110px]">Outcome</TableHead>
+                    <TableHead className="w-[140px]">Theme</TableHead>
+                    <TableHead className="min-w-[240px]">Predicted</TableHead>
+                    <TableHead className="min-w-[240px]">Actual</TableHead>
+                    <TableHead className="w-[100px] text-right">
+                      Similarity
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {comparisonData.map((row) => {
+                    const outcome =
+                      row.feedback === 'good-prediction'
+                        ? { label: 'TP', color: 'text-green-700 bg-green-50' }
+                        : row.feedback === 'false-positive'
+                          ? { label: 'FP', color: 'text-amber-700 bg-amber-50' }
+                          : { label: 'FN', color: 'text-red-700 bg-red-50' };
+                    return (
+                      <TableRow key={`qlevel-${row.id}`}>
+                        <TableCell>
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${outcome.color}`}
+                          >
+                            {outcome.label}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs text-slate-700">
+                          {row.category || '—'}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {row.predictedQuestion || (
+                            <span className="text-slate-400 italic">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {row.actualPhrasing || (
+                            <span className="text-slate-400 italic">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right text-xs">
+                          {row.similarity > 0 ? `${row.similarity}%` : '—'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           </div>
         </CardContent>

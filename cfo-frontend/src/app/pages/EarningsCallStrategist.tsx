@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -14,27 +14,78 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '../components/ui/collapsible';
-import { fetchPredictedQuestions, type PredictedQA } from '../utils/api';
+import {
+  fetchPredictedQuestions,
+  fetchSimulatorSuggestedAnswer,
+  type PredictedQA,
+} from '../utils/api';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import { AnswerWithCitationLinks } from '../components/AnswerWithCitationLinks';
 
 interface QuestionItem {
   id: string;
   question: string;
   category: string;
+  categoryL1?: string | null;
+  categoryL2?: string | null;
   riskLevel: string;
   suggestedAnswer: string;
   status: 'pending' | 'retained' | 'rejected';
   isCustom?: boolean;
+  company?: string;
+  fiscalYear?: number | null;
+  quarter?: string | null;
+  ragSources?: {
+    excerpt: string;
+    label: string;
+    citation?: string;
+    pdf_url?: string | null;
+    page_number?: number;
+  }[];
+  citationHrefs?: Record<string, string>;
+  ragLoading?: boolean;
+  ragError?: string | null;
+  ragFetched?: boolean;
+  retrievalMode?: string;
+  dbSuggestedAnswer?: string;
+}
+
+function formatSourceLabel(meta: Record<string, unknown>): string {
+  const t = String(meta.document_type ?? '').trim();
+  const q = String(meta.quarter ?? '').trim();
+  const y = meta.fiscal_year;
+  const yStr = y != null && y !== '' ? `FY${y}` : '';
+  const fn = String(meta.source_filename ?? '').trim();
+  const base = [t, q, yStr].filter(Boolean).join(' · ');
+  if (fn && base) return `${base} · ${fn}`;
+  if (fn) return fn;
+  return base || 'Uploaded document';
 }
 
 function mapApiToQuestion(q: PredictedQA): QuestionItem {
   return {
     id: q.id,
     question: q.predicted_question,
-    category: q.category,
+    category: q.category ?? '',
+    categoryL1: q.category_l1 ?? null,
+    categoryL2: q.category_l2 ?? null,
     riskLevel: q.risk?.toLowerCase() ?? 'medium',
-    suggestedAnswer: q.suggested_answer,
+    suggestedAnswer: q.suggested_answer ?? '',
     status: 'pending',
     isCustom: false,
+    company: q.company ?? '',
+    fiscalYear: q.fiscal_year ?? null,
+    quarter: q.quarter ?? null,
+    ragFetched: false,
+    ragLoading: false,
+    ragError: null,
+    dbSuggestedAnswer: q.suggested_answer ?? '',
   };
 }
 
@@ -45,13 +96,95 @@ export default function EarningsCallStrategist() {
   const [error, setError] = useState<string | null>(null);
   const [newCustomQuestion, setNewCustomQuestion] = useState('');
   const [openQuestions, setOpenQuestions] = useState<string[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState('');
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('');
+  const [selectedQuarter, setSelectedQuarter] = useState<string>('');
+
+  const companiesFromQuestions = useMemo(() => {
+    const s = new Set<string>();
+    for (const q of questions) {
+      if (q.company && !q.isCustom) s.add(q.company);
+    }
+    return Array.from(s).sort();
+  }, [questions]);
+
+  useEffect(() => {
+    if (companiesFromQuestions.length === 1) {
+      setSelectedCompany(companiesFromQuestions[0]);
+    }
+  }, [companiesFromQuestions]);
+
+  const topSourceSnippets = useMemo(() => {
+    const seen = new Set<string>();
+    const out: {
+      key: string;
+      citation?: string;
+      label: string;
+      excerpt: string;
+      pdf_url?: string | null;
+      page_number?: number;
+    }[] = [];
+    for (const q of questions) {
+      if (!q.ragSources) continue;
+      if (selectedCompany.trim() && q.company !== selectedCompany) continue;
+      if (selectedFiscalYear && String(q.fiscalYear ?? '') !== selectedFiscalYear) continue;
+      if (selectedQuarter && (q.quarter ?? '') !== selectedQuarter) continue;
+      for (const s of q.ragSources) {
+        const key = `${s.citation ?? ''}|${s.excerpt.slice(0, 80)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          key,
+          citation: s.citation,
+          label: s.label,
+          excerpt: s.excerpt,
+          pdf_url: s.pdf_url,
+          page_number: s.page_number,
+        });
+        if (out.length >= 10) return out;
+      }
+    }
+    return out;
+  }, [questions, selectedCompany, selectedFiscalYear, selectedQuarter]);
+
+  const periodOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const q of questions) {
+      if (q.isCustom) continue;
+      if (q.fiscalYear != null && q.quarter) {
+        set.add(`${q.fiscalYear}|${q.quarter}`);
+      }
+    }
+    return Array.from(set)
+      .map((k) => {
+        const [fy, qt] = k.split('|');
+        return { fiscalYear: Number(fy), quarter: qt };
+      })
+      .sort((a, b) =>
+        a.fiscalYear === b.fiscalYear
+          ? a.quarter.localeCompare(b.quarter)
+          : b.fiscalYear - a.fiscalYear,
+      );
+  }, [questions]);
+
+  const visibleQuestions = useMemo(() => {
+    return questions.filter((q) => {
+      if (q.isCustom) return true;
+      if (selectedCompany.trim() && q.company !== selectedCompany) return false;
+      if (selectedFiscalYear && String(q.fiscalYear ?? '') !== selectedFiscalYear) return false;
+      if (selectedQuarter && (q.quarter ?? '') !== selectedQuarter) return false;
+      return true;
+    });
+  }, [questions, selectedCompany, selectedFiscalYear, selectedQuarter]);
 
   useEffect(() => {
     async function load() {
       try {
         setLoading(true);
         setError(null);
-        const data = await fetchPredictedQuestions();
+        const data = await fetchPredictedQuestions(
+          selectedCompany || undefined,
+        );
         setQuestions(data.map(mapApiToQuestion));
       } catch (err: any) {
         setError(err.message ?? 'Failed to load questions from the server.');
@@ -61,7 +194,93 @@ export default function EarningsCallStrategist() {
       }
     }
     load();
-  }, []);
+  }, [selectedCompany]);
+
+  const ensureRagAnswer = useCallback(
+    async (item: QuestionItem) => {
+      let skip = false;
+      setQuestions((prev) => {
+        const cur = prev.find((x) => x.id === item.id);
+        if (!cur || cur.ragFetched || cur.ragLoading) {
+          skip = true;
+          return prev;
+        }
+        return prev.map((x) =>
+          x.id === item.id ? { ...x, ragLoading: true, ragError: null } : x,
+        );
+      });
+      if (skip) return;
+      try {
+        const res = await fetchSimulatorSuggestedAnswer(
+        item.question,
+        item.fiscalYear ?? null,
+        item.quarter ?? null,
+      );
+        setQuestions((prev) =>
+          prev.map((x) =>
+            x.id === item.id
+              ? {
+                  ...x,
+                  suggestedAnswer: res.answer,
+                  citationHrefs: res.citation_hrefs,
+                  ragSources: res.sources.map((s) => ({
+                    excerpt: s.excerpt,
+                    citation: s.citation,
+                    pdf_url: s.pdf_url,
+                    page_number: s.page_number,
+                    label: s.citation
+                      ? `${s.citation} — ${formatSourceLabel(s.metadata)}`
+                      : formatSourceLabel(s.metadata),
+                  })),
+                  ragFetched: true,
+                  ragLoading: false,
+                  ragError: null,
+                  retrievalMode: res.retrieval_mode,
+                }
+              : x,
+          ),
+        );
+      } catch (err: unknown) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : 'Could not load answer from documents.';
+        setQuestions((prev) =>
+          prev.map((x) =>
+            x.id === item.id ? { ...x, ragLoading: false, ragError: msg } : x,
+          ),
+        );
+      }
+    },
+    [],
+  );
+
+  const ragStateKey = useMemo(
+    () =>
+      questions
+        .map(
+          (q) =>
+            `${q.id}:${q.ragFetched ? 1 : 0}:${q.ragLoading ? 1 : 0}:${q.ragError ?? ''}`,
+        )
+        .join('|'),
+    [questions],
+  );
+
+  useEffect(() => {
+    if (loading) return;
+    const next = questions.find(
+      (q) => !q.ragFetched && !q.ragLoading && q.ragError == null,
+    );
+    if (next) void ensureRagAnswer(next);
+  }, [loading, ragStateKey, questions, ensureRagAnswer]);
+
+  const handleQuestionOpenChange = (item: QuestionItem, open: boolean) => {
+    setOpenQuestions((prev) => {
+      if (open) return prev.includes(item.id) ? prev : [...prev, item.id];
+      return prev.filter((x) => x !== item.id);
+    });
+    if (open) void ensureRagAnswer(item);
+  };
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
@@ -97,9 +316,14 @@ export default function EarningsCallStrategist() {
       question: newCustomQuestion,
       category: 'Custom',
       riskLevel: 'medium',
-      suggestedAnswer: 'Please provide your own answer for this custom question.',
+      suggestedAnswer:
+        'Open “View suggested answer” to load text from your uploaded documents (hybrid search across all uploads).',
       status: 'retained',
       isCustom: true,
+      company: '',
+      ragFetched: false,
+      ragLoading: false,
+      ragError: null,
     };
 
     setQuestions(prev => [newQuestion, ...prev]);
@@ -171,12 +395,6 @@ export default function EarningsCallStrategist() {
     }, 1000);
   };
 
-  const toggleQuestion = (id: string) => {
-    setOpenQuestions(prev =>
-      prev.includes(id) ? prev.filter(qId => qId !== id) : [...prev, id]
-    );
-  };
-
   const retainedQuestions = questions.filter((q: QuestionItem) => q.status === 'retained');
   const retainedCount = retainedQuestions.length;
 
@@ -212,6 +430,8 @@ export default function EarningsCallStrategist() {
     );
   }
 
+  const emptyDb = !loading && !error && questions.length === 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -228,8 +448,89 @@ export default function EarningsCallStrategist() {
             </Button>
             <h1 className="text-3xl font-semibold text-[#8B1319] mb-2">Earnings Call Simulator</h1>
             <p className="text-slate-600">Prepare for tough questions with AI-predicted scenarios</p>
+            {questions.some((q) => q.ragLoading) && (
+              <p className="text-sm text-[#ED232A] mt-2 flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                Grounding CFO-style answers from uploaded documents (hybrid search + rerank)…
+              </p>
+            )}
+            {companiesFromQuestions.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <span className="text-sm font-medium text-slate-700">
+                  Filter list by company:
+                </span>
+                <Select
+                  value={selectedCompany || '__all__'}
+                  onValueChange={(v) =>
+                    setSelectedCompany(v === '__all__' ? '' : v)
+                  }
+                >
+                  <SelectTrigger className="w-[240px] border-[#ED232A]/40">
+                    <SelectValue placeholder="All companies" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All companies</SelectItem>
+                    {companiesFromQuestions.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {periodOptions.length > 0 && (
+                  <>
+                    <span className="text-sm font-medium text-slate-700">Period:</span>
+                    <Select
+                      value={
+                        selectedFiscalYear && selectedQuarter
+                          ? `${selectedFiscalYear}|${selectedQuarter}`
+                          : '__all__'
+                      }
+                      onValueChange={(v) => {
+                        if (v === '__all__') {
+                          setSelectedFiscalYear('');
+                          setSelectedQuarter('');
+                        } else {
+                          const [fy, qt] = v.split('|');
+                          setSelectedFiscalYear(fy);
+                          setSelectedQuarter(qt);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-[200px] border-[#ED232A]/40">
+                        <SelectValue placeholder="All periods" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">All periods</SelectItem>
+                        {periodOptions.map((p) => (
+                          <SelectItem
+                            key={`${p.fiscalYear}|${p.quarter}`}
+                            value={`${p.fiscalYear}|${p.quarter}`}
+                          >
+                            {p.quarter} FY{String(p.fiscalYear).slice(-2)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
+
+        {emptyDb && (
+          <Card className="border-amber-200 bg-amber-50/80">
+            <CardContent className="py-4 text-sm text-amber-950 space-y-2">
+              <p className="font-medium">No rows in the Supabase table <code className="bg-amber-100 px-1 rounded">predicted_qa</code>.</p>
+              <ul className="list-disc pl-5 space-y-1 text-amber-900/90">
+                <li>Run <code className="bg-amber-100 px-1 rounded text-xs">cfo-backend/migrations/004_seed_sample_qa.sql</code> in the Supabase SQL Editor, or</li>
+                <li>In Admin → Generate Q&amp;A, set company to <strong>HDFC</strong> (same as seed) and click <strong>Generate questions (LLM)</strong> with persist enabled, or</li>
+                <li>Use the Excel uploader script <code className="bg-amber-100 px-1 rounded text-xs">upload_questions_to_supabase.py</code>.</li>
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Main Content - Two Column Layout */}
         <div className="grid lg:grid-cols-3 gap-6">
@@ -267,7 +568,12 @@ export default function EarningsCallStrategist() {
             <CardContent className="p-0">
               <ScrollArea className="h-[800px]">
                 <div className="p-4 space-y-3">
-                  {questions.map((q, idx) => (
+                  {emptyDb && (
+                    <p className="text-slate-600 text-sm px-2">
+                      Add questions using the steps above, or type a custom question below.
+                    </p>
+                  )}
+                  {visibleQuestions.map((q, idx) => (
                     <Card 
                       key={q.id} 
                       className={`border transition-all ${
@@ -286,9 +592,20 @@ export default function EarningsCallStrategist() {
                               <Badge variant="outline" className="text-xs font-semibold text-[#ED232A] border-[#ED232A]">
                                 Q{idx + 1}
                               </Badge>
-                              <Badge variant="outline" className="text-xs border-[#ED232A] text-[#ED232A]">
-                                {q.category}
-                              </Badge>
+                              {q.categoryL1 ? (
+                                <Badge variant="outline" className="text-xs border-[#ED232A] text-[#ED232A]">
+                                  {q.categoryL1}
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs border-[#ED232A] text-[#ED232A]">
+                                  {q.category}
+                                </Badge>
+                              )}
+                              {q.categoryL2 && (
+                                <Badge variant="outline" className="text-xs border-slate-300 text-slate-600">
+                                  {q.categoryL2}
+                                </Badge>
+                              )}
                               <Badge className={`text-xs ${getRiskColor(q.riskLevel)}`}>
                                 {q.riskLevel}
                               </Badge>
@@ -301,6 +618,12 @@ export default function EarningsCallStrategist() {
                             <div className="font-medium text-[#8B1319] text-sm leading-relaxed">
                               {q.question}
                             </div>
+                            {q.ragLoading && (
+                              <p className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
+                                <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                                Loading document-grounded answer…
+                              </p>
+                            )}
                           </div>
                         </div>
 
@@ -334,14 +657,16 @@ export default function EarningsCallStrategist() {
                           </Button>
                         </div>
 
-                        {/* Collapsible Suggested Answer */}
-                        <Collapsible open={openQuestions.includes(q.id)}>
-                          <CollapsibleTrigger 
-                            onClick={() => toggleQuestion(q.id)}
+                        {/* Collapsible: hybrid RAG answer from uploads */}
+                        <Collapsible
+                          open={openQuestions.includes(q.id)}
+                          onOpenChange={(open) => handleQuestionOpenChange(q, open)}
+                        >
+                          <CollapsibleTrigger
                             className="w-full flex items-center justify-between p-3 bg-[#FFE8EA]/50 hover:bg-[#FFE8EA] rounded-lg transition-colors"
                           >
                             <span className="text-sm font-medium text-[#ED232A]">
-                              View Suggested Answer
+                              View suggested answer (from uploaded documents)
                             </span>
                             {openQuestions.includes(q.id) ? (
                               <ChevronUp className="w-4 h-4 text-[#ED232A]" />
@@ -350,11 +675,84 @@ export default function EarningsCallStrategist() {
                             )}
                           </CollapsibleTrigger>
                           <CollapsibleContent className="mt-3">
-                            <div className="p-4 bg-white border border-[#d4dce6] rounded-lg">
-                              <div className="text-sm font-medium text-[#ED232A] mb-2">💡 Suggested Answer:</div>
-                              <div className="text-sm text-slate-700 leading-relaxed">
-                                {q.suggestedAnswer}
-                              </div>
+                            <div className="p-4 bg-white border border-[#d4dce6] rounded-lg space-y-3">
+                              {q.ragLoading && (
+                                <div className="flex items-center gap-2 text-sm text-slate-600 py-2">
+                                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                                  Hybrid search + reranking against your document chunks…
+                                </div>
+                              )}
+                              {q.ragError && (
+                                <div
+                                  role="alert"
+                                  className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg p-3"
+                                >
+                                  {q.ragError}
+                                </div>
+                              )}
+                              {!q.ragLoading && (
+                                <>
+                                  <div className="text-sm font-medium text-[#ED232A]">
+                                    Suggested answer
+                                  </div>
+                                  <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                    <AnswerWithCitationLinks
+                                      text={q.suggestedAnswer}
+                                      hrefs={q.citationHrefs}
+                                    />
+                                  </div>
+                                  {q.ragFetched && q.retrievalMode && (
+                                    <p className="text-xs text-slate-500">
+                                      Citations in [brackets] open the source PDF at the indexed page
+                                      (Chrome/Edge). Retrieval: hybrid search (dense + keyword), RRF
+                                      fusion, rerank — leg:{' '}
+                                      {q.retrievalMode.replace(/_/g, ' ')}.
+                                    </p>
+                                  )}
+                                  {q.ragSources && q.ragSources.length > 0 && (
+                                    <div className="space-y-2 border-t border-dashed border-slate-200 pt-3">
+                                      <div className="text-xs font-semibold text-slate-600">
+                                        Top source snippets
+                                      </div>
+                                      {q.ragSources.map((s, si) => (
+                                        <div
+                                          key={si}
+                                          className="text-xs bg-slate-50 rounded p-2 border border-slate-100"
+                                        >
+                                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                                            {s.pdf_url ? (
+                                              <a
+                                                href={s.pdf_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="font-mono text-xs font-semibold text-[#ED232A] hover:underline"
+                                              >
+                                                {s.citation ?? s.label.split(' — ')[0]}
+                                                {s.page_number != null
+                                                  ? ` · page ${s.page_number}`
+                                                  : ''}{' '}
+                                                (open PDF)
+                                              </a>
+                                            ) : (
+                                              <span className="font-mono text-xs font-semibold text-slate-800">
+                                                {s.citation ?? s.label.split(' — ')[0]}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {s.label.includes(' — ') && (
+                                            <div className="text-[11px] text-slate-500 mb-1">
+                                              {s.label.split(' — ').slice(1).join(' — ')}
+                                            </div>
+                                          )}
+                                          <div className="text-slate-600 leading-relaxed">
+                                            {s.excerpt}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </>
+                              )}
                             </div>
                           </CollapsibleContent>
                         </Collapsible>
@@ -437,6 +835,73 @@ export default function EarningsCallStrategist() {
               <div className="text-xs text-slate-600 text-center pt-2 border-t border-[#d4dce6]">
                 Your cheat sheet will include all retained questions with suggested answers
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Top source snippets — aggregated across visible questions */}
+          <Card className="lg:col-span-1 border-[#ED232A]/30 shadow-lg h-fit">
+            <CardHeader className="bg-gradient-to-r from-[#FFE8EA] to-white border-b border-[#d4dce6]">
+              <CardTitle className="text-[#8B1319] text-lg flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Top source snippets
+              </CardTitle>
+              <p className="text-xs text-slate-600 mt-1">
+                Highest-ranked excerpts pulled from your uploaded documents
+                {selectedCompany ? ` for ${selectedCompany}` : ''}
+                {selectedFiscalYear && selectedQuarter
+                  ? ` · ${selectedQuarter} FY${selectedFiscalYear.slice(-2)}`
+                  : ''}
+              </p>
+            </CardHeader>
+            <CardContent className="p-4">
+              {topSourceSnippets.length === 0 ? (
+                <div className="text-xs text-slate-500 py-4 text-center">
+                  Open a predicted question to fetch grounded answers — top
+                  source snippets will appear here.
+                </div>
+              ) : (
+                <ScrollArea className="h-[420px] pr-2">
+                  <div className="space-y-2">
+                    {topSourceSnippets.map((s, idx) => (
+                      <div
+                        key={s.key}
+                        className="text-xs bg-slate-50 rounded p-2 border border-slate-100"
+                      >
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="text-[10px] font-semibold text-[#ED232A]">
+                            #{idx + 1}
+                          </span>
+                          {s.pdf_url ? (
+                            <a
+                              href={s.pdf_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono text-xs font-semibold text-[#ED232A] hover:underline"
+                            >
+                              {s.citation ?? s.label.split(' — ')[0]}
+                              {s.page_number != null
+                                ? ` · p${s.page_number}`
+                                : ''}
+                            </a>
+                          ) : (
+                            <span className="font-mono text-xs font-semibold text-slate-800">
+                              {s.citation ?? s.label.split(' — ')[0]}
+                            </span>
+                          )}
+                        </div>
+                        {s.label.includes(' — ') && (
+                          <div className="text-[11px] text-slate-500 mb-1">
+                            {s.label.split(' — ').slice(1).join(' — ')}
+                          </div>
+                        )}
+                        <div className="text-slate-600 leading-relaxed line-clamp-4">
+                          {s.excerpt}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
             </CardContent>
           </Card>
         </div>
