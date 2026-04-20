@@ -120,49 +120,6 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Performance Debrief */}
-          <Card 
-            className="border-[#ED232A]/30 hover:border-[#ED232A] hover:shadow-xl transition-all cursor-pointer group bg-white"
-            onClick={() => navigate('/debrief')}
-          >
-            <CardHeader className="space-y-4 pb-4">
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#ED232A] to-[#FF3B47] flex items-center justify-center group-hover:scale-110 transition-transform">
-                <LineChart className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <CardTitle className="text-[#8B1319] text-2xl mb-2">
-                  Performance Debrief
-                </CardTitle>
-                <CardDescription className="text-slate-600 text-base">
-                  Review performance and improve for future calls
-                </CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-4 border-t border-slate-100">
-              <ul className="space-y-3 mb-6">
-                <li className="flex items-center text-sm text-slate-700">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#ED232A] mr-3" />
-                  Predictions vs actuals
-                </li>
-                <li className="flex items-center text-sm text-slate-700">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#ED232A] mr-3" />
-                  Response effectiveness
-                </li>
-                <li className="flex items-center text-sm text-slate-700">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#ED232A] mr-3" />
-                  Areas for improvement
-                </li>
-                <li className="flex items-center text-sm text-slate-700">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#ED232A] mr-3" />
-                  Post-call analytics
-                </li>
-              </ul>
-              <div className="flex items-center text-[#ED232A] font-medium group-hover:gap-3 transition-all">
-                View Debrief
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Footer */}
