@@ -393,7 +393,7 @@ export default function AdminDashboard() {
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [qgenSubmitting, setQgenSubmitting] = useState(false);
 
-  const [adminMainTab, setAdminMainTab] = useState<"generate" | "review">("generate");
+  const [adminMainTab, setAdminMainTab] = useState<"generate">("generate");
   const [reviewCompany, setReviewCompany] = useState("HDFC");
   const [companyPicker, setCompanyPicker] = useState<string[]>(["HDFC"]);
   const [actualLoading, setActualLoading] = useState(false);
@@ -1006,7 +1006,7 @@ export default function AdminDashboard() {
 
       <Tabs
         value={adminMainTab}
-        onValueChange={(v) => setAdminMainTab(v as "generate" | "review")}
+        onValueChange={(v) => setAdminMainTab(v as "generate")}
         className="w-full"
       >
         <TabsList className="mb-10 flex w-full max-w-2xl bg-slate-200/80 p-2 rounded-2xl mx-auto shadow-inner">
@@ -1019,7 +1019,7 @@ export default function AdminDashboard() {
               Generate Q&A
             </div>
           </TabsTrigger>
-          <TabsTrigger
+          {/* <TabsTrigger
             value="review"
             className="flex-1 rounded-xl py-4 text-lg font-medium text-slate-600 data-[state=active]:bg-[#002850] data-[state=active]:text-white data-[state=active]:shadow-lg transition-all"
           >
@@ -1027,7 +1027,7 @@ export default function AdminDashboard() {
               <FileSpreadsheet className="w-5 h-5" />
               Review Q&A
             </div>
-          </TabsTrigger>
+          </TabsTrigger> */}
           {/* <TabsTrigger
             value="analysis"
             className="flex-1 rounded-xl py-4 text-lg font-medium text-slate-600 data-[state=active]:bg-[#002850] data-[state=active]:text-white data-[state=active]:shadow-lg transition-all"
@@ -1039,7 +1039,8 @@ export default function AdminDashboard() {
           </TabsTrigger> */}
         </TabsList>
 
-        <TabsContent value="review">
+        {/* Review Q&A tab — hidden for now */}
+        {false && <TabsContent value="review">
           <div className="space-y-6">
             <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-xl border border-slate-200">
               <span className="font-medium text-slate-700">Company:</span>
@@ -1570,7 +1571,7 @@ export default function AdminDashboard() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </TabsContent>
+        </TabsContent>}
 
         <TabsContent value="generate">
           <div className="space-y-6">
