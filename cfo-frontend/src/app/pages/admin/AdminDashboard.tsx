@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -390,6 +391,7 @@ function collectUploadPayload(
 }
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [qgenSubmitting, setQgenSubmitting] = useState(false);
 
@@ -995,13 +997,22 @@ export default function AdminDashboard() {
 
   return (
     <div className="p-6 space-y-6 max-w-[1800px] mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-[#002850] mb-2">
-          Admin Panel
-        </h1>
-        <p className="text-slate-600">
-          Configure company details and upload relevant intelligence documents.
-        </p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold text-[#002850] mb-2">
+            Admin Panel
+          </h1>
+          <p className="text-slate-600">
+            Configure company details and upload relevant intelligence documents.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => navigate("/dashboard")}
+          className="border-[#002850] text-[#002850] hover:bg-[#002850] hover:text-white"
+        >
+          Go to Dashboard
+        </Button>
       </div>
 
       <Tabs
