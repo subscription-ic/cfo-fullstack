@@ -101,6 +101,7 @@ const DOC_TYPES = [
   "AR",
   "GUIDE",
   "SUPP",
+  "RR",
 ] as const;
 
 const CUSTOM_COMPANIES_STORAGE_KEY = "cfo_admin_custom_companies";
@@ -131,6 +132,9 @@ function sourceCategoryForDocType(documentType: string): string {
     documentType === "financial_stats"
   ) {
     return "supplementary";
+  }
+  if (documentType === "RR") {
+    return "research_report";
   }
   return "reporting_materials";
 }
@@ -200,6 +204,7 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   AR: "Annual Report",
   GUIDE: "Guidance / Outlook Document",
   SUPP: "Supplementary Data / Supporting Documents",
+  RR: "Research Report (Analyst / Third-Party)",
   historical_ec: "Historical earnings call",
   current_ec: "Current earnings call",
   financial_stats: "Financial statements",
@@ -1843,7 +1848,8 @@ export default function AdminDashboard() {
                         </span>
                         <span className="text-sm text-slate-500 mt-1">
                           Select one or many PDFs / TXT — pick the document type
-                          (FIN, PR, TR, PPT, AR, GUIDE, SUPP) per file below
+                          (FIN, PR, TR, PPT, AR, GUIDE, SUPP, RR) per file below.
+                          Research Reports (RR) are vectorized like any other document.
                         </span>
                       </Label>
                     </div>
