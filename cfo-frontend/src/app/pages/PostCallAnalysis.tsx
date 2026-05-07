@@ -1,10 +1,155 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+} from 'recharts';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { Progress } from '../components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { ArrowLeft, TrendingUp } from 'lucide-react';
+import {
+  ArrowLeft,
+  TrendingUp,
+  Activity,
+  Gauge,
+  ClipboardList,
+  Banknote,
+  Target,
+  Sparkles,
+} from 'lucide-react';
+
+interface KpiTile {
+  label: string;
+  value: string;
+  valueTone: 'positive' | 'neutral' | 'negative';
+  icon: typeof TrendingUp;
+  delta: string;
+  context: string;
+}
+
+const POST_CALL_KPIS: KpiTile[] = [
+  {
+    label: 'Stock Price Movement',
+    value: '+6.2%',
+    valueTone: 'positive',
+    icon: TrendingUp,
+    delta: '↑ 6.6pp vs +1.3% FII-come window',
+    context: 'Day 0 → Day 7 vs FII-come window',
+  },
+  {
+    label: 'Sentiment Score Change',
+    value: '+11 pts',
+    valueTone: 'positive',
+    icon: Gauge,
+    delta: '+8 pts vs −2 pts prior',
+    context: 'vs last earnings cycle',
+  },
+  {
+    label: 'Analyst Rating Change',
+    value: '14 Buy / 2 Hold',
+    valueTone: 'neutral',
+    icon: ClipboardList,
+    delta: '+3 upgrades on 11 Buy / 1 Hold',
+    context: 'vs pre-call ratings',
+  },
+  {
+    label: 'FII / DII Net Flow',
+    value: '₹1,420 Cr',
+    valueTone: 'positive',
+    icon: Banknote,
+    delta: '+₹970 Cr vs −₹120 Cr',
+    context: 'Day-7 inflow vs last cycle',
+  },
+];
+
+const STOCK_MOVEMENT_7D = [
+  { day: 'Day 0', price: 2480 },
+  { day: 'Day 1', price: 2545 },
+  { day: 'Day 2', price: 2560 },
+  { day: 'Day 3', price: 2540 },
+  { day: 'Day 4', price: 2570 },
+  { day: 'Day 5', price: 2600 },
+  { day: 'Day 6', price: 2625 },
+  { day: 'Day 7', price: 2634 },
+];
+
+const SENTIMENT_EVOLUTION_7D = [
+  { day: 'Day 0', positive: 32, neutral: 48, negative: 20 },
+  { day: 'Day 1', positive: 44, neutral: 40, negative: 16 },
+  { day: 'Day 2', positive: 50, neutral: 36, negative: 14 },
+  { day: 'Day 3', positive: 46, neutral: 38, negative: 16 },
+  { day: 'Day 4', positive: 55, neutral: 32, negative: 13 },
+  { day: 'Day 5', positive: 62, neutral: 26, negative: 12 },
+  { day: 'Day 6', positive: 68, neutral: 22, negative: 10 },
+  { day: 'Day 7', positive: 72, neutral: 19, negative: 9 },
+];
+
+const AI_INSIGHTS: { label: string; body: string }[] = [
+  {
+    label: 'Initial rally driven by EBITDA beat',
+    body: 'Stock surged 2.6% on Day 1 as margin expansion of 120 bps exceeded analyst expectations.',
+  },
+  {
+    label: 'Mid-week dip due to sector pressure',
+    body: 'Broader IT sector selloff on Day 3 pulled stock down 1.0%, but fundamentals remained intact.',
+  },
+  {
+    label: 'Recovery after broker upgrades',
+    body: 'Three HOLD → BUY upgrades from Motilal Oswal, Kotak, and HDFC drove Days 5–7 recovery to +6.2% total.',
+  },
+  {
+    label: 'FII inflows accelerated post-call',
+    body: 'Net FII buying of ₹1,420 Cr over 7 days; 5.2× higher than previous earnings cycle.',
+  },
+];
+
+interface BrokerAction {
+  broker: string;
+  previous: string;
+  previousTone: 'positive' | 'neutral' | 'negative';
+  current: string;
+  currentTone: 'positive' | 'neutral' | 'negative' | 'strong';
+  targetPrice: string;
+  confidence: number;
+}
+
+const BROKER_ACTIONS: BrokerAction[] = [
+  { broker: 'Motilal Oswal', previous: 'HOLD', previousTone: 'neutral', current: 'BUY', currentTone: 'positive', targetPrice: '₹2,650', confidence: 68 },
+  { broker: 'ICICI Securities', previous: 'BUY', previousTone: 'positive', current: 'STRONG BUY', currentTone: 'strong', targetPrice: '₹2,930', confidence: 90 },
+  { broker: 'Kotak Institutional', previous: 'HOLD', previousTone: 'neutral', current: 'BUY', currentTone: 'positive', targetPrice: '₹2,800', confidence: 65 },
+  { broker: 'Axis Capital', previous: 'BUY', previousTone: 'positive', current: 'BUY', currentTone: 'positive', targetPrice: '₹2,750', confidence: 80 },
+  { broker: 'HDFC Securities', previous: 'HOLD', previousTone: 'neutral', current: 'BUY', currentTone: 'positive', targetPrice: '₹2,840', confidence: 71 },
+  { broker: 'Edelweiss', previous: 'BUY', previousTone: 'positive', current: 'STRONG BUY', currentTone: 'strong', targetPrice: '₹2,910', confidence: 90 },
+];
+
+function ratingBadgeClass(tone: 'positive' | 'neutral' | 'negative' | 'strong'): string {
+  switch (tone) {
+    case 'positive':
+      return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'neutral':
+      return 'bg-slate-50 text-slate-700 border-slate-200';
+    case 'negative':
+      return 'bg-red-50 text-red-700 border-red-200';
+    case 'strong':
+      return 'bg-green-600 text-white border-green-700';
+  }
+}
+
+function kpiValueClass(tone: 'positive' | 'neutral' | 'negative'): string {
+  if (tone === 'positive') return 'text-green-700';
+  if (tone === 'negative') return 'text-red-700';
+  return 'text-slate-900';
+}
 
 interface ResearchReport {
   firm: string;
@@ -370,15 +515,166 @@ export default function PostCallAnalysis() {
           </Button>
         </div>
 
-        <div className="text-center py-8">
-          <div className="w-16 h-16 mx-auto rounded-xl bg-gradient-to-br from-[#ED232A] to-[#FF3B47] flex items-center justify-center mb-4">
-            <TrendingUp className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-3xl font-semibold text-[#8B1319] mb-2">Post-Call Analysis</h1>
-          <p className="text-slate-600">
-            Track market response and analyst reactions post-earnings
+        <div>
+          <h1 className="text-3xl font-semibold text-slate-900">Post-Call Analysis</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Q1 FY26 Earnings Call · 7-Day Impact Assessment
           </p>
         </div>
+
+        {/* KPI tiles */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {POST_CALL_KPIS.map((k) => {
+            const Icon = k.icon;
+            return (
+              <Card key={k.label} className="border-slate-200">
+                <CardContent className="p-4 space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <Icon className="w-3.5 h-3.5 text-[#ED232A]" />
+                    {k.label}
+                  </div>
+                  <div className={`text-2xl font-semibold ${kpiValueClass(k.valueTone)}`}>
+                    {k.value}
+                  </div>
+                  <div className="text-xs text-slate-600">{k.delta}</div>
+                  <div className="text-[11px] text-slate-400">{k.context}</div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Market Impact Story */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+              <Activity className="w-4 h-4 text-[#ED232A]" />
+              Market Impact Story
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-sm font-medium text-slate-800">Stock Movement (7-Day)</h3>
+                <p className="text-xs text-slate-500 mb-3">NSE Price (₹) with Volume Indicators</p>
+                <div className="h-[260px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={STOCK_MOVEMENT_7D} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
+                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                      <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <YAxis
+                        domain={[2470, 2660]}
+                        ticks={[2480, 2500, 2520, 2540, 2560, 2580, 2600, 2620, 2640]}
+                        tick={{ fontSize: 11, fill: '#64748b' }}
+                      />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="price"
+                        stroke="#ED232A"
+                        strokeWidth={2.5}
+                        dot={{ r: 4, fill: '#ED232A' }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  Day 1 rally (+2.6%) · Day 3 dip (−0.4%) · Day 7 recovery (+6.2% total)
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-medium text-slate-800">Sentiment Evolution</h3>
+                <p className="text-xs text-slate-500 mb-3">Analyst &amp; Media Sentiment Distribution (%)</p>
+                <div className="h-[260px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={SENTIMENT_EVOLUTION_7D} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
+                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                      <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <YAxis domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <Tooltip />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Area type="monotone" dataKey="positive" name="Positive" stackId="1" stroke="#16a34a" fill="#bbf7d0" />
+                      <Area type="monotone" dataKey="neutral" name="Neutral" stackId="1" stroke="#94a3b8" fill="#e2e8f0" />
+                      <Area type="monotone" dataKey="negative" name="Negative" stackId="1" stroke="#dc2626" fill="#fecaca" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* AI Insight Summary */}
+        <Card className="border-[#ED232A]/30 bg-[#FEE2E2]/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm text-[#8B1319]">
+              <Sparkles className="w-4 h-4 text-[#ED232A]" />
+              AI Insight Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {AI_INSIGHTS.map((i) => (
+              <div key={i.label} className="flex items-start gap-2 text-sm">
+                <Target className="w-3.5 h-3.5 text-[#ED232A] mt-1 shrink-0" />
+                <p className="text-slate-700">
+                  <span className="font-semibold text-slate-900">{i.label}:</span> {i.body}
+                </p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Deep Dive Analysis — Analyst & Broker Actions */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+              <ClipboardList className="w-4 h-4 text-[#ED232A]" />
+              Deep Dive Analysis
+            </CardTitle>
+            <p className="text-xs text-slate-500 mt-1">Analyst &amp; Broker Actions</p>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-lg border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[180px]">Broker</TableHead>
+                    <TableHead className="w-[140px]">Previous Rating</TableHead>
+                    <TableHead className="w-[140px]">New Rating</TableHead>
+                    <TableHead className="w-[140px]">Target Price (₹)</TableHead>
+                    <TableHead>Confidence</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {BROKER_ACTIONS.map((b) => (
+                    <TableRow key={b.broker}>
+                      <TableCell className="font-medium text-slate-800">{b.broker}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={ratingBadgeClass(b.previousTone)}>
+                          {b.previous}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={ratingBadgeClass(b.currentTone)}>
+                          {b.current}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-700">{b.targetPrice}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Progress value={b.confidence} className="w-40 h-2" />
+                          <span className="text-xs text-slate-600 tabular-nums">{b.confidence}%</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Research Reports — Rating & Summarization (relocated from Debrief) */}
         <Card>
@@ -549,25 +845,6 @@ export default function PostCallAnalysis() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Stock Price Movement (7-day)</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-slate-500">
-              Coming soon — daily close vs index, abnormal-return decomposition.
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>FII / DII Flow Tracking</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-slate-500">
-              Coming soon — institutional flow into the stock around the call window.
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );
