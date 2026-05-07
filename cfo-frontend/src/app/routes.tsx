@@ -9,6 +9,7 @@ import QuarterlyIntelligenceHub from "./pages/cfo/QuarterlyIntelligenceHub";
 import EarningsCallSimulator from "./pages/cfo/EarningsCallSimulator";
 import PredictionVsActual from "./pages/admin/PredictionVsActual";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import PostCallAnalysis from "./pages/PostCallAnalysis";
 import NotFound from "./pages/NotFound";
 
 export const router = createBrowserRouter([
@@ -35,6 +36,10 @@ export const router = createBrowserRouter([
   {
     path: "/debrief",
     element: <PredictionVsActual />,
+  },
+  {
+    path: "/post-call-analysis",
+    element: <PostCallAnalysis />,
   },
   {
     path: "/cfo",
