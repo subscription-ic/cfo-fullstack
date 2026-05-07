@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { BarChart3, Sparkles, LineChart, ArrowRight, Target } from 'lucide-react';
+import { BarChart3, LineChart, ArrowRight, Target, TrendingUp } from 'lucide-react';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -30,8 +30,8 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Three Cards */}
-        <div className="grid grid-cols-3 gap-6">
+        {/* Module Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Historical Intelligence Hub */}
           <Card 
             className="border-[#ED232A]/30 hover:border-[#ED232A] hover:shadow-xl transition-all cursor-pointer group bg-white"
@@ -159,6 +159,50 @@ export default function Dashboard() {
               </ul>
               <div className="flex items-center text-[#ED232A] font-medium group-hover:gap-3 transition-all">
                 View Debrief
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Post-Call Analysis */}
+          <Card
+            className="border-[#ED232A]/30 hover:border-[#ED232A] hover:shadow-xl transition-all cursor-pointer group bg-white"
+            onClick={() => navigate('/post-call-analysis')}
+          >
+            <CardHeader className="space-y-4 pb-4">
+              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#ED232A] to-[#FF3B47] flex items-center justify-center group-hover:scale-110 transition-transform">
+                <TrendingUp className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-[#8B1319] text-2xl mb-2">
+                  Post-Call Analysis
+                </CardTitle>
+                <CardDescription className="text-slate-600 text-base">
+                  Track market response and analyst reactions post-earnings
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4 border-t border-slate-100">
+              <ul className="space-y-3 mb-6">
+                <li className="flex items-center text-sm text-slate-700">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#ED232A] mr-3" />
+                  Stock price movement (7-day)
+                </li>
+                <li className="flex items-center text-sm text-slate-700">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#ED232A] mr-3" />
+                  Sentiment evolution analysis
+                </li>
+                <li className="flex items-center text-sm text-slate-700">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#ED232A] mr-3" />
+                  Analyst rating changes
+                </li>
+                <li className="flex items-center text-sm text-slate-700">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#ED232A] mr-3" />
+                  FII/DII flow tracking
+                </li>
+              </ul>
+              <div className="flex items-center text-[#ED232A] font-medium group-hover:gap-3 transition-all">
+                View Analysis
                 <ArrowRight className="w-4 h-4 ml-2" />
               </div>
             </CardContent>
