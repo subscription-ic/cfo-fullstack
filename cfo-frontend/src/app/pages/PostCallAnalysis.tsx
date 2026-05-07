@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   AreaChart,
   Area,
   CartesianGrid,
@@ -15,7 +15,6 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { Progress } from '../components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import {
   ArrowLeft,
@@ -28,127 +27,21 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-interface KpiTile {
-  label: string;
-  value: string;
-  valueTone: 'positive' | 'neutral' | 'negative';
-  icon: typeof TrendingUp;
-  delta: string;
-  context: string;
-}
-
-const POST_CALL_KPIS: KpiTile[] = [
-  {
-    label: 'Stock Price Movement',
-    value: '+6.2%',
-    valueTone: 'positive',
-    icon: TrendingUp,
-    delta: '↑ 6.6pp vs +1.3% FII-come window',
-    context: 'Day 0 → Day 7 vs FII-come window',
-  },
-  {
-    label: 'Sentiment Score Change',
-    value: '+11 pts',
-    valueTone: 'positive',
-    icon: Gauge,
-    delta: '+8 pts vs −2 pts prior',
-    context: 'vs last earnings cycle',
-  },
-  {
-    label: 'Analyst Rating Change',
-    value: '14 Buy / 2 Hold',
-    valueTone: 'neutral',
-    icon: ClipboardList,
-    delta: '+3 upgrades on 11 Buy / 1 Hold',
-    context: 'vs pre-call ratings',
-  },
-  {
-    label: 'FII / DII Net Flow',
-    value: '₹1,420 Cr',
-    valueTone: 'positive',
-    icon: Banknote,
-    delta: '+₹970 Cr vs −₹120 Cr',
-    context: 'Day-7 inflow vs last cycle',
-  },
-];
-
-const STOCK_MOVEMENT_7D = [
-  { day: 'Day 0', price: 2480 },
-  { day: 'Day 1', price: 2545 },
-  { day: 'Day 2', price: 2560 },
-  { day: 'Day 3', price: 2540 },
-  { day: 'Day 4', price: 2570 },
-  { day: 'Day 5', price: 2600 },
-  { day: 'Day 6', price: 2625 },
-  { day: 'Day 7', price: 2634 },
-];
-
-const SENTIMENT_EVOLUTION_7D = [
-  { day: 'Day 0', positive: 32, neutral: 48, negative: 20 },
-  { day: 'Day 1', positive: 44, neutral: 40, negative: 16 },
-  { day: 'Day 2', positive: 50, neutral: 36, negative: 14 },
-  { day: 'Day 3', positive: 46, neutral: 38, negative: 16 },
-  { day: 'Day 4', positive: 55, neutral: 32, negative: 13 },
-  { day: 'Day 5', positive: 62, neutral: 26, negative: 12 },
-  { day: 'Day 6', positive: 68, neutral: 22, negative: 10 },
-  { day: 'Day 7', positive: 72, neutral: 19, negative: 9 },
-];
-
-const AI_INSIGHTS: { label: string; body: string }[] = [
-  {
-    label: 'Initial rally driven by EBITDA beat',
-    body: 'Stock surged 2.6% on Day 1 as margin expansion of 120 bps exceeded analyst expectations.',
-  },
-  {
-    label: 'Mid-week dip due to sector pressure',
-    body: 'Broader IT sector selloff on Day 3 pulled stock down 1.0%, but fundamentals remained intact.',
-  },
-  {
-    label: 'Recovery after broker upgrades',
-    body: 'Three HOLD → BUY upgrades from Motilal Oswal, Kotak, and HDFC drove Days 5–7 recovery to +6.2% total.',
-  },
-  {
-    label: 'FII inflows accelerated post-call',
-    body: 'Net FII buying of ₹1,420 Cr over 7 days; 5.2× higher than previous earnings cycle.',
-  },
-];
-
-interface BrokerAction {
-  broker: string;
-  previous: string;
-  previousTone: 'positive' | 'neutral' | 'negative';
-  current: string;
-  currentTone: 'positive' | 'neutral' | 'negative' | 'strong';
-  targetPrice: string;
-  confidence: number;
-}
-
-const BROKER_ACTIONS: BrokerAction[] = [
-  { broker: 'Motilal Oswal', previous: 'HOLD', previousTone: 'neutral', current: 'BUY', currentTone: 'positive', targetPrice: '₹2,650', confidence: 68 },
-  { broker: 'ICICI Securities', previous: 'BUY', previousTone: 'positive', current: 'STRONG BUY', currentTone: 'strong', targetPrice: '₹2,930', confidence: 90 },
-  { broker: 'Kotak Institutional', previous: 'HOLD', previousTone: 'neutral', current: 'BUY', currentTone: 'positive', targetPrice: '₹2,800', confidence: 65 },
-  { broker: 'Axis Capital', previous: 'BUY', previousTone: 'positive', current: 'BUY', currentTone: 'positive', targetPrice: '₹2,750', confidence: 80 },
-  { broker: 'HDFC Securities', previous: 'HOLD', previousTone: 'neutral', current: 'BUY', currentTone: 'positive', targetPrice: '₹2,840', confidence: 71 },
-  { broker: 'Edelweiss', previous: 'BUY', previousTone: 'positive', current: 'STRONG BUY', currentTone: 'strong', targetPrice: '₹2,910', confidence: 90 },
-];
-
-function ratingBadgeClass(tone: 'positive' | 'neutral' | 'negative' | 'strong'): string {
-  switch (tone) {
-    case 'positive':
-      return 'bg-amber-50 text-amber-700 border-amber-200';
-    case 'neutral':
-      return 'bg-slate-50 text-slate-700 border-slate-200';
-    case 'negative':
-      return 'bg-red-50 text-red-700 border-red-200';
-    case 'strong':
-      return 'bg-green-600 text-white border-green-700';
-  }
-}
-
 function kpiValueClass(tone: 'positive' | 'neutral' | 'negative'): string {
   if (tone === 'positive') return 'text-green-700';
   if (tone === 'negative') return 'text-red-700';
   return 'text-slate-900';
+}
+
+function parseTargetPrice(s: string): number {
+  return Number(s.replace(/[^\d.]/g, '')) || 0;
+}
+
+function isoWeekStart(d: Date): Date {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() - (day - 1));
+  return date;
 }
 
 interface ResearchReport {
@@ -505,6 +398,108 @@ export default function PostCallAnalysis() {
     [sentimentPage],
   );
 
+  // Aggregates derived from the Research Reports table.
+  const reportStats = useMemo(() => {
+    const targets = HDFC_RESEARCH_REPORTS.map((r) => parseTargetPrice(r.targetPrice));
+    const total = HDFC_RESEARCH_REPORTS.length;
+    const avgTarget = Math.round(targets.reduce((s, t) => s + t, 0) / total);
+    const minTarget = Math.min(...targets);
+    const maxTarget = Math.max(...targets);
+    const ratingCounts = HDFC_RESEARCH_REPORTS.reduce((acc, r) => {
+      acc[r.rating] = (acc[r.rating] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    const positiveCount = HDFC_RESEARCH_REPORTS.filter((r) => r.ratingTone === 'positive').length;
+    const ratingMixLabel = Object.entries(ratingCounts)
+      .map(([k, v]) => `${v} ${k}`)
+      .join(' · ');
+    return { avgTarget, minTarget, maxTarget, ratingCounts, positiveCount, total, ratingMixLabel };
+  }, []);
+
+  // Aggregates derived from the Sentiment Analysis table.
+  const sentimentStats = useMemo(() => {
+    const total = HDFC_SENTIMENT_Q1_FY25.length;
+    const avgScore = HDFC_SENTIMENT_Q1_FY25.reduce((s, e) => s + e.score, 0) / total;
+    const positives = HDFC_SENTIMENT_Q1_FY25.filter((e) => e.sentiment === 'Positive').length;
+    const neutrals = HDFC_SENTIMENT_Q1_FY25.filter((e) => e.sentiment === 'Neutral').length;
+    const negatives = HDFC_SENTIMENT_Q1_FY25.filter((e) => e.sentiment === 'Negative').length;
+    const positivePct = (positives / total) * 100;
+    const negativePct = (negatives / total) * 100;
+    return { total, avgScore, positives, neutrals, negatives, positivePct, negativePct };
+  }, []);
+
+  // Bar chart series: target price per broker, ordered by target descending.
+  const targetPriceSeries = useMemo(
+    () =>
+      HDFC_RESEARCH_REPORTS.map((r) => ({
+        firm: r.firm,
+        target: parseTargetPrice(r.targetPrice),
+        tone: r.ratingTone,
+      })).sort((a, b) => b.target - a.target),
+    [],
+  );
+
+  // Stacked area: sentiment-share per ISO week, derived from the entries' dates.
+  const sentimentWeeklySeries = useMemo(() => {
+    const buckets = new Map<
+      string,
+      { date: Date; positive: number; neutral: number; negative: number }
+    >();
+    for (const e of HDFC_SENTIMENT_Q1_FY25) {
+      const weekStart = isoWeekStart(new Date(e.date));
+      const key = weekStart.toISOString().slice(0, 10);
+      const bucket = buckets.get(key) ?? { date: weekStart, positive: 0, neutral: 0, negative: 0 };
+      if (e.sentiment === 'Positive') bucket.positive += 1;
+      else if (e.sentiment === 'Neutral') bucket.neutral += 1;
+      else bucket.negative += 1;
+      buckets.set(key, bucket);
+    }
+    return Array.from(buckets.values())
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .map((b) => {
+        const denom = b.positive + b.neutral + b.negative || 1;
+        return {
+          week: b.date.toLocaleDateString(undefined, { month: 'short', day: '2-digit' }),
+          positive: Math.round((b.positive / denom) * 100),
+          neutral: Math.round((b.neutral / denom) * 100),
+          negative: Math.round((b.negative / denom) * 100),
+        };
+      });
+  }, []);
+
+  // AI Insight bullets derived from the same data.
+  const aiInsights = useMemo(() => {
+    const bullets: { label: string; body: string }[] = [];
+    const sortedByScore = [...HDFC_SENTIMENT_Q1_FY25].sort((a, b) => b.score - a.score);
+    const top = sortedByScore[0];
+    const bottom = sortedByScore[sortedByScore.length - 1];
+
+    bullets.push({
+      label: `Net sentiment ${sentimentStats.avgScore >= 0 ? 'tilted positive' : 'tilted negative'} (avg ${sentimentStats.avgScore >= 0 ? '+' : ''}${sentimentStats.avgScore.toFixed(2)})`,
+      body: `${sentimentStats.positives} positive, ${sentimentStats.neutrals} neutral, and ${sentimentStats.negatives} negative signals across ${sentimentStats.total} entries (${sentimentStats.positivePct.toFixed(0)}% positive share).`,
+    });
+    bullets.push({
+      label: `Top positive driver — ${top.theme}`,
+      body: `${top.summary} (Source: ${top.source}, score ${top.score >= 0 ? '+' : ''}${top.score.toFixed(2)})`,
+    });
+    bullets.push({
+      label: `Top negative concern — ${bottom.theme}`,
+      body: `${bottom.summary} (Source: ${bottom.source}, score ${bottom.score >= 0 ? '+' : ''}${bottom.score.toFixed(2)})`,
+    });
+
+    const sortedReports = [...HDFC_RESEARCH_REPORTS].sort(
+      (a, b) => parseTargetPrice(b.targetPrice) - parseTargetPrice(a.targetPrice),
+    );
+    const highest = sortedReports[0];
+    bullets.push({
+      label: `Highest broker target — ${highest.firm}`,
+      body: `${highest.rating} call with target ${highest.targetPrice}. ${highest.summary}`,
+    });
+    return bullets;
+  }, [sentimentStats]);
+
+  const fmtINR = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -518,30 +513,97 @@ export default function PostCallAnalysis() {
         <div>
           <h1 className="text-3xl font-semibold text-slate-900">Post-Call Analysis</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Q1 FY26 Earnings Call · 7-Day Impact Assessment
+            HDFC · Q1 FY25 — sell-side coverage and multi-source sentiment, derived from the
+            tables below.
           </p>
         </div>
 
-        {/* KPI tiles */}
+        {/* KPI tiles — derived from the Research Reports + Sentiment tables */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {POST_CALL_KPIS.map((k) => {
-            const Icon = k.icon;
-            return (
-              <Card key={k.label} className="border-slate-200">
-                <CardContent className="p-4 space-y-1.5">
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <Icon className="w-3.5 h-3.5 text-[#ED232A]" />
-                    {k.label}
-                  </div>
-                  <div className={`text-2xl font-semibold ${kpiValueClass(k.valueTone)}`}>
-                    {k.value}
-                  </div>
-                  <div className="text-xs text-slate-600">{k.delta}</div>
-                  <div className="text-[11px] text-slate-400">{k.context}</div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          <Card className="border-slate-200">
+            <CardContent className="p-4 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <Banknote className="w-3.5 h-3.5 text-[#ED232A]" />
+                Avg Analyst Target
+              </div>
+              <div className={`text-2xl font-semibold ${kpiValueClass('neutral')}`}>
+                {fmtINR(reportStats.avgTarget)}
+              </div>
+              <div className="text-xs text-slate-600">
+                Range {fmtINR(reportStats.minTarget)} – {fmtINR(reportStats.maxTarget)}
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Across {reportStats.total} sell-side firms
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200">
+            <CardContent className="p-4 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <Gauge className="w-3.5 h-3.5 text-[#ED232A]" />
+                Net Sentiment Score
+              </div>
+              <div
+                className={`text-2xl font-semibold ${kpiValueClass(
+                  sentimentStats.avgScore >= 0.05
+                    ? 'positive'
+                    : sentimentStats.avgScore <= -0.05
+                    ? 'negative'
+                    : 'neutral',
+                )}`}
+              >
+                {sentimentStats.avgScore >= 0 ? '+' : ''}
+                {sentimentStats.avgScore.toFixed(2)}
+              </div>
+              <div className="text-xs text-slate-600">
+                Avg of {sentimentStats.total} signals
+              </div>
+              <div className="text-[11px] text-slate-400">
+                {sentimentStats.positives} pos · {sentimentStats.neutrals} neu · {sentimentStats.negatives} neg
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200">
+            <CardContent className="p-4 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <ClipboardList className="w-3.5 h-3.5 text-[#ED232A]" />
+                Analyst Rating Mix
+              </div>
+              <div className={`text-2xl font-semibold ${kpiValueClass('neutral')}`}>
+                {reportStats.ratingMixLabel}
+              </div>
+              <div className="text-xs text-slate-600">
+                {reportStats.positiveCount} of {reportStats.total} positive-toned
+              </div>
+              <div className="text-[11px] text-slate-400">
+                From the Research Reports table
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200">
+            <CardContent className="p-4 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <TrendingUp className="w-3.5 h-3.5 text-[#ED232A]" />
+                Positive Sentiment Share
+              </div>
+              <div
+                className={`text-2xl font-semibold ${kpiValueClass(
+                  sentimentStats.positivePct >= 50 ? 'positive' : 'neutral',
+                )}`}
+              >
+                {sentimentStats.positivePct.toFixed(0)}%
+              </div>
+              <div className="text-xs text-slate-600">
+                {sentimentStats.positives} of {sentimentStats.total} entries
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Negative share: {sentimentStats.negativePct.toFixed(0)}%
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Market Impact Story */}
@@ -555,43 +617,39 @@ export default function PostCallAnalysis() {
           <CardContent>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
-                <h3 className="text-sm font-medium text-slate-800">Stock Movement (7-Day)</h3>
-                <p className="text-xs text-slate-500 mb-3">NSE Price (₹) with Volume Indicators</p>
+                <h3 className="text-sm font-medium text-slate-800">Analyst Target Prices</h3>
+                <p className="text-xs text-slate-500 mb-3">
+                  Per-firm targets from the Research Reports table (₹)
+                </p>
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={STOCK_MOVEMENT_7D} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
+                    <BarChart data={targetPriceSeries} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
                       <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                      <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <XAxis dataKey="firm" tick={{ fontSize: 11, fill: '#64748b' }} interval={0} angle={-15} textAnchor="end" height={60} />
                       <YAxis
-                        domain={[2470, 2660]}
-                        ticks={[2480, 2500, 2520, 2540, 2560, 2580, 2600, 2620, 2640]}
+                        domain={[1700, 2300]}
                         tick={{ fontSize: 11, fill: '#64748b' }}
                       />
-                      <Tooltip />
-                      <Line
-                        type="monotone"
-                        dataKey="price"
-                        stroke="#ED232A"
-                        strokeWidth={2.5}
-                        dot={{ r: 4, fill: '#ED232A' }}
-                        activeDot={{ r: 6 }}
-                      />
-                    </LineChart>
+                      <Tooltip formatter={(v: number) => fmtINR(v)} />
+                      <Bar dataKey="target" fill="#ED232A" radius={[4, 4, 0, 0]} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
-                  Day 1 rally (+2.6%) · Day 3 dip (−0.4%) · Day 7 recovery (+6.2% total)
+                  Avg {fmtINR(reportStats.avgTarget)} · Range {fmtINR(reportStats.minTarget)} – {fmtINR(reportStats.maxTarget)}
                 </p>
               </div>
 
               <div>
                 <h3 className="text-sm font-medium text-slate-800">Sentiment Evolution</h3>
-                <p className="text-xs text-slate-500 mb-3">Analyst &amp; Media Sentiment Distribution (%)</p>
+                <p className="text-xs text-slate-500 mb-3">
+                  Weekly distribution from the Sentiment Analysis table (% share)
+                </p>
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={SENTIMENT_EVOLUTION_7D} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
+                    <AreaChart data={sentimentWeeklySeries} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
                       <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                      <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#64748b' }} />
                       <YAxis domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} tick={{ fontSize: 11, fill: '#64748b' }} />
                       <Tooltip />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -606,16 +664,19 @@ export default function PostCallAnalysis() {
           </CardContent>
         </Card>
 
-        {/* AI Insight Summary */}
+        {/* AI Insight Summary — derived */}
         <Card className="border-[#ED232A]/30 bg-[#FEE2E2]/40">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm text-[#8B1319]">
               <Sparkles className="w-4 h-4 text-[#ED232A]" />
               AI Insight Summary
             </CardTitle>
+            <p className="text-xs text-slate-500 mt-1">
+              Computed from the Research Reports and Sentiment Analysis tables below.
+            </p>
           </CardHeader>
           <CardContent className="space-y-2">
-            {AI_INSIGHTS.map((i) => (
+            {aiInsights.map((i) => (
               <div key={i.label} className="flex items-start gap-2 text-sm">
                 <Target className="w-3.5 h-3.5 text-[#ED232A] mt-1 shrink-0" />
                 <p className="text-slate-700">
@@ -623,56 +684,6 @@ export default function PostCallAnalysis() {
                 </p>
               </div>
             ))}
-          </CardContent>
-        </Card>
-
-        {/* Deep Dive Analysis — Analyst & Broker Actions */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
-              <ClipboardList className="w-4 h-4 text-[#ED232A]" />
-              Deep Dive Analysis
-            </CardTitle>
-            <p className="text-xs text-slate-500 mt-1">Analyst &amp; Broker Actions</p>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-lg border overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[180px]">Broker</TableHead>
-                    <TableHead className="w-[140px]">Previous Rating</TableHead>
-                    <TableHead className="w-[140px]">New Rating</TableHead>
-                    <TableHead className="w-[140px]">Target Price (₹)</TableHead>
-                    <TableHead>Confidence</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {BROKER_ACTIONS.map((b) => (
-                    <TableRow key={b.broker}>
-                      <TableCell className="font-medium text-slate-800">{b.broker}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={ratingBadgeClass(b.previousTone)}>
-                          {b.previous}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={ratingBadgeClass(b.currentTone)}>
-                          {b.current}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-700">{b.targetPrice}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Progress value={b.confidence} className="w-40 h-2" />
-                          <span className="text-xs text-slate-600 tabular-nums">{b.confidence}%</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
           </CardContent>
         </Card>
 
