@@ -40,12 +40,117 @@ interface ComparisonData {
   feedback: string;
 }
 
+function normalizeQuestion(q: string | null | undefined): string {
+  return (q ?? '')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function dedupeActuals(actuals: ActualEarningsQARow[]): ActualEarningsQARow[] {
+  // Same question asked twice in a transcript shouldn't double-count in
+  // precision/recall. Prefer the row that's already linked (carries the
+  // judge's match signal); otherwise keep the earliest by created_at.
+  const byKey = new Map<string, ActualEarningsQARow>();
+  for (const a of actuals) {
+    const key = normalizeQuestion(a.question);
+    if (!key) continue;
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, a);
+      continue;
+    }
+    const prevLinked = !!prev.predicted_qa_id;
+    const curLinked = !!a.predicted_qa_id;
+    if (!prevLinked && curLinked) {
+      byKey.set(key, a);
+    } else if (prevLinked === curLinked) {
+      const prevTime = prev.created_at ?? '';
+      const curTime = a.created_at ?? '';
+      if (curTime && prevTime && curTime < prevTime) byKey.set(key, a);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+// Extract substantive tokens (numbers, percentages, basis points, currency
+// amounts, named entities) from a question. Two questions are considered
+// "substantively similar" if they share at least one token. Lowercased,
+// stripped of stopwords, returns a Set for fast intersection.
+const _STOPWORDS = new Set([
+  'q1', 'q2', 'q3', 'q4', 'fy', 'h1', 'h2', 'inc', 'ltd', 'pvt', 'and', 'the',
+  'for', 'with', 'this', 'that', 'these', 'those', 'are', 'was', 'were', 'has',
+  'had', 'have', 'will', 'would', 'should', 'could', 'into', 'over', 'under',
+  'about', 'your', 'their', 'our', 'his', 'her', 'its', 'from', 'into', 'on',
+  'in', 'to', 'at', 'by', 'of', 'or', 'as', 'an', 'a',
+]);
+
+function extractSubstantiveTokens(text: string | null | undefined): Set<string> {
+  const out = new Set<string>();
+  if (!text) return out;
+  const t = text.toLowerCase();
+
+  // Numbers with units: "230 bps", "17%", "₹450 crore", "8.5x"
+  const numericMatches = t.match(/[\d]+(?:[,.]\d+)?\s*(?:%|bps|bp|crore|cr\b|million|mn|billion|bn|x|years?|months?|days?|quarters?)?/g) ?? [];
+  for (const m of numericMatches) {
+    const cleaned = m.replace(/\s+/g, '').trim();
+    if (cleaned.length >= 2 && /\d/.test(cleaned)) out.add(cleaned);
+  }
+
+  // Multi-word capitalized phrases in the ORIGINAL casing (named entities).
+  const entityMatches = (text ?? '').match(/\b[A-Z][A-Za-z0-9&]+(?:\s+[A-Z][A-Za-z0-9&]+)+\b/g) ?? [];
+  for (const m of entityMatches) {
+    const lower = m.toLowerCase();
+    if (lower.length >= 4) out.add(lower);
+  }
+
+  // Single capitalized tokens that aren't sentence starts (heuristic: skip
+  // the first word of each sentence).
+  const sentenceTokens = (text ?? '').split(/[.!?]\s+/);
+  for (const sentence of sentenceTokens) {
+    const words = sentence.split(/\s+/).slice(1); // skip first token
+    for (const w of words) {
+      const clean = w.replace(/[^\w&]/g, '');
+      if (/^[A-Z][A-Za-z0-9&]{2,}$/.test(clean)) {
+        const lower = clean.toLowerCase();
+        if (!_STOPWORDS.has(lower)) out.add(lower);
+      }
+    }
+  }
+
+  return out;
+}
+
+function isSubstantiveMatch(predictedText: string, actualText: string): boolean {
+  const a = extractSubstantiveTokens(predictedText);
+  const b = extractSubstantiveTokens(actualText);
+  if (a.size === 0 || b.size === 0) return false;
+  for (const t of a) if (b.has(t)) return true;
+  return false;
+}
+
 function periodLabelOf(r: ActualEarningsQARow): string {
   if (r.period_label && r.period_label.trim()) return r.period_label.trim();
   if (r.quarter && r.fiscal_year) {
     return `${r.quarter} FY${String(r.fiscal_year).slice(-2)}`;
   }
   return '—';
+}
+
+interface ConfusionRow {
+  predictedCategory: string;
+  actualCategory: string;
+  predictedSide: boolean;
+  actualSide: boolean;
+  predictedCount: number;
+  actualCount: number;
+  tp: number;
+  fp: number;
+  fn: number;
+  precision: number;
+  recall: number;
+  f1: number;
 }
 
 interface ThemeMetrics {
@@ -81,7 +186,7 @@ function pairKey(l1: string, l2: string): string {
 function computeMetrics(
   predicted: PredictedQA[],
   actuals: ActualEarningsQARow[],
-): { overall: ThemeMetrics; perTheme: ThemeMetrics[] } {
+): { overall: ThemeMetrics; perTheme: ThemeMetrics[]; perL2: ThemeMetrics[] } {
   const linkedPredIds = new Set<string>();
   for (const a of actuals) {
     if (a.predicted_qa_id) linkedPredIds.add(a.predicted_qa_id);
@@ -107,31 +212,23 @@ function computeMetrics(
   const overallFP = predicted.filter((p) => !linkedPredIds.has(p.id)).length;
   const overall = row('Overall', '', overallTP, overallFP, overallFN);
 
-  // Per (L1, L2) pair — union across both sides
-  const pairs = new Map<string, { l1: string; l2: string }>();
-  for (const p of predicted) {
-    const l1 = themeOf(p);
-    const l2 = subThemeOf(p);
-    pairs.set(pairKey(l1, l2), { l1, l2 });
-  }
-  for (const a of actuals) {
-    const l1 = themeOf(a);
-    const l2 = subThemeOf(a);
-    pairs.set(pairKey(l1, l2), { l1, l2 });
-  }
+  // Aggregate by L1 only. L2 vocabularies don't align between sources
+  // (predicted L2 comes from a fixed template list; actual L2 is free-form
+  // from the transcript extractor), so joining on the pair fragments every
+  // theme into single-side rows with broken precision/recall. The L2 column
+  // becomes an informational sample of sub-themes seen for that L1.
+  const l1Set = new Set<string>();
+  for (const p of predicted) l1Set.add(themeOf(p));
+  for (const a of actuals) l1Set.add(themeOf(a));
 
   const perTheme: ThemeMetrics[] = [];
-  for (const { l1, l2 } of pairs.values()) {
-    const predInPair = predicted.filter(
-      (p) => themeOf(p) === l1 && subThemeOf(p) === l2,
-    );
-    const actualsInPair = actuals.filter(
-      (a) => themeOf(a) === l1 && subThemeOf(a) === l2,
-    );
-    const tp = actualsInPair.filter((a) => !!a.predicted_qa_id).length;
-    const fn = actualsInPair.length - tp;
-    const fp = predInPair.filter((p) => !linkedPredIds.has(p.id)).length;
-    perTheme.push(row(l1, l2, tp, fp, fn));
+  for (const l1 of l1Set) {
+    const predInL1 = predicted.filter((p) => themeOf(p) === l1);
+    const actualsInL1 = actuals.filter((a) => themeOf(a) === l1);
+    const tp = actualsInL1.filter((a) => !!a.predicted_qa_id).length;
+    const fn = actualsInL1.length - tp;
+    const fp = predInL1.filter((p) => !linkedPredIds.has(p.id)).length;
+    perTheme.push(row(l1, '', tp, fp, fn));
   }
   perTheme.sort((a, b) => {
     const byL1 = a.theme.localeCompare(b.theme);
@@ -141,7 +238,148 @@ function computeMetrics(
     return a.subTheme.localeCompare(b.subTheme);
   });
 
-  return { overall, perTheme };
+  // Aggregate by (L1, L2) pair. Same caveat as above — predicted vs actual
+  // L2 vocabularies don't fully align, so single-side rows are common. We
+  // surface every pair that appeared on either side; matching-rate stays
+  // meaningful per pair because TP is bounded by the actual side.
+  const pairSet = new Set<string>();
+  const pairMeta = new Map<string, { l1: string; l2: string }>();
+  for (const p of predicted) {
+    const l1 = themeOf(p);
+    const l2 = subThemeOf(p);
+    const key = pairKey(l1, l2);
+    pairSet.add(key);
+    pairMeta.set(key, { l1, l2 });
+  }
+  for (const a of actuals) {
+    const l1 = themeOf(a);
+    const l2 = subThemeOf(a);
+    const key = pairKey(l1, l2);
+    pairSet.add(key);
+    pairMeta.set(key, { l1, l2 });
+  }
+
+  const perL2: ThemeMetrics[] = [];
+  for (const key of pairSet) {
+    const meta = pairMeta.get(key);
+    if (!meta) continue;
+    const predInPair = predicted.filter(
+      (p) => themeOf(p) === meta.l1 && subThemeOf(p) === meta.l2,
+    );
+    const actualsInPair = actuals.filter(
+      (a) => themeOf(a) === meta.l1 && subThemeOf(a) === meta.l2,
+    );
+    const tp = actualsInPair.filter((a) => !!a.predicted_qa_id).length;
+    const fn = actualsInPair.length - tp;
+    const fp = predInPair.filter((p) => !linkedPredIds.has(p.id)).length;
+    perL2.push(row(meta.l1, meta.l2, tp, fp, fn));
+  }
+  perL2.sort((a, b) => {
+    const byL1 = a.theme.localeCompare(b.theme);
+    if (byL1 !== 0) return byL1;
+    const byVolume = b.tp + b.fp + b.fn - (a.tp + a.fp + a.fn);
+    if (byVolume !== 0) return byVolume;
+    return a.subTheme.localeCompare(b.subTheme);
+  });
+
+  return { overall, perTheme, perL2 };
+}
+
+function computeConfusionMatrix(
+  predicted: PredictedQA[],
+  actuals: ActualEarningsQARow[],
+  level: 'l1' | 'l2',
+): ConfusionRow[] {
+  const predById = new Map<string, PredictedQA>();
+  for (const p of predicted) predById.set(p.id, p);
+
+  const labelOf = (
+    item: {
+      category_l1?: string | null;
+      category_l2?: string | null;
+      category?: string | null;
+    },
+  ): string => {
+    if (level === 'l1') return themeOf(item);
+    const l2 = subThemeOf(item);
+    return `${themeOf(item)} / ${l2 && l2 !== '—' ? l2 : '—'}`;
+  };
+
+  // Universe of category labels seen on either side
+  const predictedLabels = new Set<string>();
+  const actualLabels = new Set<string>();
+  for (const p of predicted) predictedLabels.add(labelOf(p));
+  for (const a of actuals) actualLabels.add(labelOf(a));
+  const labels = new Set<string>([...predictedLabels, ...actualLabels]);
+
+  const linkedActualByPred = new Map<string, ActualEarningsQARow>();
+  for (const a of actuals) {
+    if (a.predicted_qa_id) linkedActualByPred.set(a.predicted_qa_id, a);
+  }
+
+  const rows: ConfusionRow[] = [];
+  for (const label of labels) {
+    let tp = 0;
+    let fp = 0;
+    let fn = 0;
+    let predictedCount = 0;
+    let actualCount = 0;
+
+    // Actual side: an actual in category `label` is either correctly
+    // predicted (linked prediction also in `label` → TP) or missed (FN).
+    for (const a of actuals) {
+      const aLabel = labelOf(a);
+      if (aLabel !== label) continue;
+      actualCount += 1;
+      const linkedPred = a.predicted_qa_id ? predById.get(a.predicted_qa_id) : undefined;
+      const pLabel = linkedPred ? labelOf(linkedPred) : null;
+      if (pLabel === label) tp += 1;
+      else fn += 1;
+    }
+
+    // Predicted side: a prediction in category `label` that wasn't asked
+    // (no link) or whose linked actual landed in a different category → FP.
+    for (const p of predicted) {
+      const pLabel = labelOf(p);
+      if (pLabel !== label) continue;
+      predictedCount += 1;
+      const linkedActual = linkedActualByPred.get(p.id);
+      const aLabel = linkedActual ? labelOf(linkedActual) : null;
+      if (!linkedActual) fp += 1;
+      else if (aLabel !== label) fp += 1;
+      // else: TP (already counted from actual side)
+    }
+
+    const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
+    const recall = tp + fn > 0 ? tp / (tp + fn) : 0;
+    const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0;
+    rows.push({
+      predictedCategory: label,
+      actualCategory: label,
+      predictedSide: predictedLabels.has(label),
+      actualSide: actualLabels.has(label),
+      predictedCount,
+      actualCount,
+      tp,
+      fp,
+      fn,
+      precision,
+      recall,
+      f1,
+    });
+  }
+
+  rows.sort((a, b) => {
+    // Surface one-sided rows at the top so missing coverage is visible:
+    // actual-only first, then predicted-only, then both-sides by volume.
+    const aSidedness = (a.predictedSide ? 1 : 0) + (a.actualSide ? 1 : 0);
+    const bSidedness = (b.predictedSide ? 1 : 0) + (b.actualSide ? 1 : 0);
+    if (aSidedness !== bSidedness) return aSidedness - bSidedness;
+    const byVolume = b.tp + b.fp + b.fn - (a.tp + a.fp + a.fn);
+    if (byVolume !== 0) return byVolume;
+    return a.predictedCategory.localeCompare(b.predictedCategory);
+  });
+  return rows;
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -260,6 +498,11 @@ function buildLiveComparison(
 
   for (const a of actuals) {
     if (usedActual.has(a.id)) continue;
+    // If this actual has a predicted_qa_id but its prediction was already
+    // consumed by an earlier match, it's a duplicate link (multiple actuals
+    // claim the same prediction). Mark it explicitly so it doesn't inflate
+    // the "missed" bucket.
+    const isCollapsedDuplicate = !!a.predicted_qa_id && predicted.some((p) => p.id === a.predicted_qa_id);
     rows.push({
       id: `miss-${a.id}`,
       predictedQuestion: '',
@@ -270,7 +513,7 @@ function buildLiveComparison(
       actualAnswer: a.answer ?? '',
       category: themeOf(a),
       subCategory: subThemeOf(a),
-      feedback: 'missed-question',
+      feedback: isCollapsedDuplicate ? 'duplicate-collapsed' : 'missed-question',
     });
   }
 
@@ -347,9 +590,13 @@ export default function PredictionVsActual() {
     }
   }, [availableQuarters, selectedQuarter]);
 
-  const quarterFilteredActuals = useMemo(
+  const quarterFilteredActualsRaw = useMemo(
     () => actuals.filter((a) => periodLabelOf(a) === selectedQuarter),
     [actuals, selectedQuarter],
+  );
+  const quarterFilteredActuals = useMemo(
+    () => dedupeActuals(quarterFilteredActualsRaw),
+    [quarterFilteredActualsRaw],
   );
 
   const quarterFilteredPredicted = useMemo(
@@ -450,6 +697,71 @@ export default function PredictionVsActual() {
     () => computeMetrics(quarterFilteredPredicted, quarterFilteredActuals),
     [quarterFilteredPredicted, quarterFilteredActuals],
   );
+
+  const confusionL1 = useMemo(
+    () => computeConfusionMatrix(quarterFilteredPredicted, quarterFilteredActuals, 'l1'),
+    [quarterFilteredPredicted, quarterFilteredActuals],
+  );
+  const confusionL2 = useMemo(
+    () => computeConfusionMatrix(quarterFilteredPredicted, quarterFilteredActuals, 'l2'),
+    [quarterFilteredPredicted, quarterFilteredActuals],
+  );
+
+  // Reconciled overall metrics. The per-theme TP/FP/FN math conflates two
+  // different "TPs" — predictions correctly fired vs analyst questions
+  // correctly anticipated — which is fine inside a category but produces
+  // denominators that don't add up to total counts at the overall level. Here
+  // we compute precision against total predictions and recall against total
+  // dedup'd actuals so the headline numbers match the row counts the user
+  // sees elsewhere.
+  const reconciledOverall = useMemo(() => {
+    const totalPredictions = quarterFilteredPredicted.length;
+    const totalActuals = quarterFilteredActuals.length;
+    const linkedPredIds = new Set<string>();
+    let linkedActuals = 0;
+    for (const a of quarterFilteredActuals) {
+      if (a.predicted_qa_id) {
+        linkedPredIds.add(a.predicted_qa_id);
+        linkedActuals += 1;
+      }
+    }
+    const tpPrecision = linkedPredIds.size;
+    const precision = totalPredictions > 0 ? tpPrecision / totalPredictions : 0;
+    const recall = totalActuals > 0 ? linkedActuals / totalActuals : 0;
+    const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0;
+
+    // Substantive precision: of the predictions that linked to an actual,
+    // how many share at least one specific token (named entity / number /
+    // metric) with the actual question? This filters out category-only
+    // matches where "margins" matched "margins" but the question content
+    // is unrelated.
+    const predById = new Map<string, PredictedQA>();
+    for (const p of quarterFilteredPredicted) predById.set(p.id, p);
+    const substantivePredIds = new Set<string>();
+    for (const a of quarterFilteredActuals) {
+      const pid = a.predicted_qa_id;
+      if (!pid) continue;
+      const p = predById.get(pid);
+      if (!p) continue;
+      if (isSubstantiveMatch(p.predicted_question, a.question)) {
+        substantivePredIds.add(pid);
+      }
+    }
+    const tpSubstantive = substantivePredIds.size;
+    const substantivePrecision = totalPredictions > 0 ? tpSubstantive / totalPredictions : 0;
+
+    return {
+      totalPredictions,
+      totalActuals,
+      tpPrecision,
+      tpSubstantive,
+      linkedActuals,
+      precision,
+      substantivePrecision,
+      recall,
+      f1,
+    };
+  }, [quarterFilteredPredicted, quarterFilteredActuals]);
 
   const topThreeAccuracy = useMemo(
     () => computeTopKAccuracy(quarterFilteredPredicted, quarterFilteredActuals, 3),
@@ -588,20 +900,36 @@ export default function PredictionVsActual() {
           </p>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
                 <Target className="w-3.5 h-3.5 text-[#ED232A]" />
-                Precision
+                Categorical Precision
               </div>
               <div className="mt-2 text-2xl font-semibold text-[#8B1319]">
-                {pct(performanceMetrics.overall.precision)}
+                {pct(reconciledOverall.precision)}
               </div>
               <div className="mt-1 text-xs text-slate-500">
-                {performanceMetrics.overall.tp} of {performanceMetrics.overall.tp + performanceMetrics.overall.fp} predictions matched.
+                {reconciledOverall.tpPrecision} of {reconciledOverall.totalPredictions} predictions linked.
               </div>
               <div className="mt-1 text-[11px] text-slate-500 leading-snug">
-                Predictions that actually became analyst questions.
+                Predictions that matched on category label. See "substantive" below for the stricter cut.
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+                <Target className="w-3.5 h-3.5 text-[#ED232A]" />
+                Substantive Precision
+              </div>
+              <div className="mt-2 text-2xl font-semibold text-[#8B1319]">
+                {pct(reconciledOverall.substantivePrecision)}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {reconciledOverall.tpSubstantive} of {reconciledOverall.totalPredictions} predictions share a specific token with the actual question.
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500 leading-snug">
+                Stricter cut: requires a shared number, named entity, or specific term — not just a category-label match.
               </div>
             </div>
 
@@ -611,13 +939,13 @@ export default function PredictionVsActual() {
                 Recall (Matching Rate)
               </div>
               <div className="mt-2 text-2xl font-semibold text-[#8B1319]">
-                {pct(performanceMetrics.overall.recall)}
+                {pct(reconciledOverall.recall)}
               </div>
               <div className="mt-1 text-xs text-slate-500">
-                {performanceMetrics.overall.tp} of {performanceMetrics.overall.tp + performanceMetrics.overall.fn} analyst questions captured.
+                {reconciledOverall.linkedActuals} of {reconciledOverall.totalActuals} analyst questions captured.
               </div>
               <div className="mt-1 text-[11px] text-slate-500 leading-snug">
-                Analyst concerns the model successfully anticipated.
+                Analyst concerns the model successfully anticipated (dedup'd).
               </div>
             </div>
 
@@ -627,7 +955,7 @@ export default function PredictionVsActual() {
                 F1 Score
               </div>
               <div className="mt-2 text-2xl font-semibold text-[#8B1319]">
-                {pct(performanceMetrics.overall.f1)}
+                {pct(reconciledOverall.f1)}
               </div>
               <div className="mt-1 text-xs text-slate-500">
                 Harmonic mean of precision and recall.
@@ -672,77 +1000,188 @@ export default function PredictionVsActual() {
         </CardContent>
       </Card>
 
-      {/* Performance Metrics — theme level */}
+      {/* L1 Confusion Matrix */}
       <Card>
         <CardHeader>
-          <CardTitle>Performance Metrics — By Theme (L1 / L2 Category)</CardTitle>
+          <CardTitle>L1 Category — Confusion Matrix</CardTitle>
           <p className="text-sm text-slate-600 mt-1">
-            Computed for {selectedQuarter} from{' '}
-            {quarterFilteredPredicted.length} predicted and{' '}
-            {quarterFilteredActuals.length} actual questions.
+            {selectedQuarter}: {quarterFilteredPredicted.length} predicted vs{' '}
+            {quarterFilteredActuals.length} actual questions. One row per L1
+            category, treating that category as a binary classifier.
           </p>
         </CardHeader>
         <CardContent>
-          <div className="border rounded-lg overflow-hidden">
+          <div className="border rounded-lg overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[180px]">L1 Theme</TableHead>
-                  <TableHead className="min-w-[180px]">L2 Sub-theme</TableHead>
+                  <TableHead className="min-w-[200px]">Predicted Category</TableHead>
+                  <TableHead className="min-w-[200px]">Actual Category</TableHead>
+                  <TableHead className="text-right">Pred Count</TableHead>
+                  <TableHead className="text-right">Actual Count</TableHead>
                   <TableHead className="text-right">TP</TableHead>
                   <TableHead className="text-right">FP</TableHead>
                   <TableHead className="text-right">FN</TableHead>
                   <TableHead className="text-right">Precision</TableHead>
                   <TableHead className="text-right">Recall</TableHead>
                   <TableHead className="text-right">F1</TableHead>
-                  <TableHead className="text-right">Matching Rate</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {performanceMetrics.perTheme.length === 0 ? (
+                {confusionL1.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       className="text-center text-sm text-slate-500 py-6"
                     >
                       No predicted or actual questions for this quarter yet.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  performanceMetrics.perTheme.map((m) => (
-                    <TableRow key={`${m.theme}__${m.subTheme}`}>
-                      <TableCell className="font-medium text-slate-800">
-                        {m.theme}
-                      </TableCell>
-                      <TableCell className="text-slate-700">
-                        {m.subTheme}
-                      </TableCell>
-                      <TableCell className="text-right">{m.tp}</TableCell>
-                      <TableCell className="text-right">{m.fp}</TableCell>
-                      <TableCell className="text-right">{m.fn}</TableCell>
-                      <TableCell className="text-right">
-                        {pct(m.precision)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {pct(m.recall)}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold text-[#8B1319]">
-                        {pct(m.f1)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {pct(m.matchingRate)}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  confusionL1.map((m) => {
+                    const label = m.predictedCategory;
+                    const onlyActual = m.actualSide && !m.predictedSide;
+                    const onlyPredicted = m.predictedSide && !m.actualSide;
+                    return (
+                      <TableRow
+                        key={`cm-l1__${label}`}
+                        className={
+                          onlyActual
+                            ? 'bg-amber-50'
+                            : onlyPredicted
+                              ? 'bg-sky-50'
+                              : undefined
+                        }
+                      >
+                        <TableCell className="font-medium text-slate-800">
+                          {m.predictedSide ? (
+                            label
+                          ) : (
+                            <span className="text-slate-400 italic">— (not predicted)</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-slate-700">
+                          {m.actualSide ? (
+                            label
+                          ) : (
+                            <span className="text-slate-400 italic">— (not asked)</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">{m.predictedCount}</TableCell>
+                        <TableCell className="text-right">{m.actualCount}</TableCell>
+                        <TableCell className="text-right">{m.tp}</TableCell>
+                        <TableCell className="text-right">{m.fp}</TableCell>
+                        <TableCell className="text-right">{m.fn}</TableCell>
+                        <TableCell className="text-right">{pct(m.precision)}</TableCell>
+                        <TableCell className="text-right">{pct(m.recall)}</TableCell>
+                        <TableCell className="text-right font-semibold text-[#8B1319]">
+                          {pct(m.f1)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
           </div>
           <p className="text-xs text-slate-500 mt-2">
-            TP = predicted question actually asked (linked); FP = predicted
-            question not asked; FN = analyst question with no matching
-            prediction. Precision = TP / (TP+FP); Recall = Matching Rate =
-            TP / (TP+FN); F1 = harmonic mean.
+            Pred Count = predictions in this L1; Actual Count = analyst questions in
+            this L1; TP = predicted &amp; actual both in this L1 (linked match); FP =
+            predicted in this L1 but actual landed elsewhere or wasn't asked; FN =
+            analyst asked in this L1 but our prediction was missing or in a different
+            L1. Precision = TP/(TP+FP); Recall = TP/(TP+FN); F1 = harmonic mean.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* L2 Confusion Matrix */}
+      <Card>
+        <CardHeader>
+          <CardTitle>L2 Sub-category — Confusion Matrix</CardTitle>
+          <p className="text-sm text-slate-600 mt-1">
+            Same {selectedQuarter} window. One row per (L1, L2) pair seen on
+            either side.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-lg overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[220px]">Predicted Category</TableHead>
+                  <TableHead className="min-w-[220px]">Actual Category</TableHead>
+                  <TableHead className="text-right">Pred Count</TableHead>
+                  <TableHead className="text-right">Actual Count</TableHead>
+                  <TableHead className="text-right">TP</TableHead>
+                  <TableHead className="text-right">FP</TableHead>
+                  <TableHead className="text-right">FN</TableHead>
+                  <TableHead className="text-right">Precision</TableHead>
+                  <TableHead className="text-right">Recall</TableHead>
+                  <TableHead className="text-right">F1</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {confusionL2.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={10}
+                      className="text-center text-sm text-slate-500 py-6"
+                    >
+                      No predicted or actual questions for this quarter yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  confusionL2.map((m) => {
+                    const label = m.predictedCategory;
+                    const onlyActual = m.actualSide && !m.predictedSide;
+                    const onlyPredicted = m.predictedSide && !m.actualSide;
+                    return (
+                      <TableRow
+                        key={`cm-l2__${label}`}
+                        className={
+                          onlyActual
+                            ? 'bg-amber-50'
+                            : onlyPredicted
+                              ? 'bg-sky-50'
+                              : undefined
+                        }
+                      >
+                        <TableCell className="font-medium text-slate-800">
+                          {m.predictedSide ? (
+                            label
+                          ) : (
+                            <span className="text-slate-400 italic">— (not predicted)</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-slate-700">
+                          {m.actualSide ? (
+                            label
+                          ) : (
+                            <span className="text-slate-400 italic">— (not asked)</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">{m.predictedCount}</TableCell>
+                        <TableCell className="text-right">{m.actualCount}</TableCell>
+                        <TableCell className="text-right">{m.tp}</TableCell>
+                        <TableCell className="text-right">{m.fp}</TableCell>
+                        <TableCell className="text-right">{m.fn}</TableCell>
+                        <TableCell className="text-right">{pct(m.precision)}</TableCell>
+                        <TableCell className="text-right">{pct(m.recall)}</TableCell>
+                        <TableCell className="text-right font-semibold text-[#8B1319]">
+                          {pct(m.f1)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            Category label is formatted as "L1 / L2". Predicted L2 vocabulary
+            (template-driven) and actual L2 vocabulary (free-form from
+            transcript extraction) don't always align — expect lower precision /
+            recall at L2 than at L1 for the same theme.
           </p>
         </CardContent>
       </Card>

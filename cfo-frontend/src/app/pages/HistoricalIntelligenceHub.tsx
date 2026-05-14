@@ -393,7 +393,7 @@ export default function HistoricalIntelligenceHub() {
             <Card className="border-[#ED232A]/30 shadow-lg">
               <CardHeader className="bg-gradient-to-r from-[#FEE2E2] to-white border-b border-[#d4dce6]">
                 <CardTitle className="text-[#002850] text-xl">
-                  Key Topics — Last 4 Quarters
+                  Key Topics
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
@@ -424,27 +424,6 @@ export default function HistoricalIntelligenceHub() {
               </CardContent>
             </Card>
 
-            {/* Generate AI Summary Button */}
-            <div className="flex justify-center">
-              <Button
-                onClick={handleGenerateSummary}
-                disabled={!selectedQuarterKey || summaryLoading}
-                className="bg-[#ED232A] hover:bg-[#B91C1C] text-white px-8 h-12 text-base disabled:opacity-50"
-              >
-                {summaryLoading ? (
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                ) : (
-                  <Sparkles className="w-5 h-5 mr-2" />
-                )}
-                {summaryLoading ? "Generating..." : "Generate AI Summary"}
-                {parsedQuarter && (
-                  <span className="ml-2 text-sm">
-                    ({parsedQuarter.quarter} FY{parsedQuarter.fiscal_year})
-                  </span>
-                )}
-              </Button>
-            </div>
-
             {/* Quarter Selection */}
             <Card className="border-[#ED232A]/30 shadow-lg">
               <CardHeader className="bg-gradient-to-r from-[#FEE2E2] to-white border-b border-[#d4dce6]">
@@ -456,24 +435,35 @@ export default function HistoricalIntelligenceHub() {
                 {quarters.length === 0 ? (
                   <p className="text-slate-500">No quarters available for {selectedCompany}. Upload documents first.</p>
                 ) : (
-                  <Select value={selectedQuarterKey} onValueChange={handleQuarterSelect}>
-                    <SelectTrigger className="w-full max-w-sm border-[#ED232A] h-11">
-                      <SelectValue placeholder="Choose a quarter to explore..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {quarters.map((q) => {
-                        const key = `${q.quarter}|${q.fiscal_year}`;
-                        return (
-                          <SelectItem key={key} value={key}>
-                            {q.quarter} FY{q.fiscal_year}
-                            {q.document_count > 0 && ` — ${q.document_count} doc${q.document_count > 1 ? "s" : ""}`}
-                            {q.actual_qa_count > 0 && ` — ${q.actual_qa_count} Q&A`}
-                            {q.has_analysis && " — Analyzed"}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    <Select value={selectedQuarterKey} onValueChange={handleQuarterSelect}>
+                      <SelectTrigger className="w-full max-w-sm border-[#ED232A] h-11">
+                        <SelectValue placeholder="Choose a quarter to explore..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {quarters.map((q) => {
+                          const key = `${q.quarter}|${q.fiscal_year}`;
+                          return (
+                            <SelectItem key={key} value={key}>
+                              {q.quarter} FY{q.fiscal_year}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={handleGenerateSummary}
+                      disabled={!selectedQuarterKey || summaryLoading}
+                      className="bg-[#ED232A] hover:bg-[#B91C1C] text-white px-8 h-11 text-base disabled:opacity-50"
+                    >
+                      {summaryLoading ? (
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-5 h-5 mr-2" />
+                      )}
+                      Generate AI Summary
+                    </Button>
+                  </div>
                 )}
               </CardContent>
             </Card>

@@ -15,6 +15,7 @@ import {
   CollapsibleTrigger,
 } from '../components/ui/collapsible';
 import {
+  fetchCompanies,
   fetchPredictedQuestions,
   fetchSimulatorSuggestedAnswer,
   type PredictedQA,
@@ -99,20 +100,44 @@ export default function EarningsCallStrategist() {
   const [selectedCompany, setSelectedCompany] = useState('');
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('');
   const [selectedQuarter, setSelectedQuarter] = useState<string>('');
-
-  const companiesFromQuestions = useMemo(() => {
-    const s = new Set<string>();
-    for (const q of questions) {
-      if (q.company && !q.isCustom) s.add(q.company);
-    }
-    return Array.from(s).sort();
-  }, [questions]);
+  // Canonical company list — independent of the (filtered) questions stream.
+  const [allCompanies, setAllCompanies] = useState<string[]>([]);
+  // Unfiltered predictions used to populate the period dropdown; refreshed
+  // when the selected company changes so periods reflect that company only.
+  const [periodsCatalog, setPeriodsCatalog] = useState<PredictedQA[]>([]);
 
   useEffect(() => {
-    if (companiesFromQuestions.length === 1) {
-      setSelectedCompany(companiesFromQuestions[0]);
-    }
-  }, [companiesFromQuestions]);
+    let cancelled = false;
+    fetchCompanies()
+      .then((list) => {
+        if (cancelled) return;
+        setAllCompanies(list);
+        if (list.length === 1 && !selectedCompany) {
+          setSelectedCompany(list[0]);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Refresh the period catalog whenever the company filter changes. Uses NO
+  // period filter so all available quarters appear in the dropdown.
+  useEffect(() => {
+    let cancelled = false;
+    fetchPredictedQuestions(selectedCompany || undefined)
+      .then((data) => {
+        if (cancelled) return;
+        setPeriodsCatalog(data);
+      })
+      .catch(() => {
+        if (!cancelled) setPeriodsCatalog([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompany]);
 
   const topSourceSnippets = useMemo(() => {
     const seen = new Set<string>();
@@ -149,10 +174,9 @@ export default function EarningsCallStrategist() {
 
   const periodOptions = useMemo(() => {
     const set = new Set<string>();
-    for (const q of questions) {
-      if (q.isCustom) continue;
-      if (q.fiscalYear != null && q.quarter) {
-        set.add(`${q.fiscalYear}|${q.quarter}`);
+    for (const q of periodsCatalog) {
+      if (q.fiscal_year != null && q.quarter) {
+        set.add(`${q.fiscal_year}|${q.quarter}`);
       }
     }
     return Array.from(set)
@@ -165,7 +189,7 @@ export default function EarningsCallStrategist() {
           ? a.quarter.localeCompare(b.quarter)
           : b.fiscalYear - a.fiscalYear,
       );
-  }, [questions]);
+  }, [periodsCatalog]);
 
   const visibleQuestions = useMemo(() => {
     return questions.filter((q) => {
@@ -182,8 +206,11 @@ export default function EarningsCallStrategist() {
       try {
         setLoading(true);
         setError(null);
+        const fy = selectedFiscalYear ? Number(selectedFiscalYear) : undefined;
         const data = await fetchPredictedQuestions(
           selectedCompany || undefined,
+          fy,
+          selectedQuarter || undefined,
         );
         setQuestions(data.map(mapApiToQuestion));
       } catch (err: any) {
@@ -194,7 +221,7 @@ export default function EarningsCallStrategist() {
       }
     }
     load();
-  }, [selectedCompany]);
+  }, [selectedCompany, selectedFiscalYear, selectedQuarter]);
 
   const ensureRagAnswer = useCallback(
     async (item: QuestionItem) => {
@@ -215,6 +242,7 @@ export default function EarningsCallStrategist() {
         item.question,
         item.fiscalYear ?? null,
         item.quarter ?? null,
+        item.company ?? selectedCompany ?? null,
       );
         setQuestions((prev) =>
           prev.map((x) =>
@@ -255,24 +283,11 @@ export default function EarningsCallStrategist() {
     [],
   );
 
-  const ragStateKey = useMemo(
-    () =>
-      questions
-        .map(
-          (q) =>
-            `${q.id}:${q.ragFetched ? 1 : 0}:${q.ragLoading ? 1 : 0}:${q.ragError ?? ''}`,
-        )
-        .join('|'),
-    [questions],
-  );
-
-  useEffect(() => {
-    if (loading) return;
-    const next = questions.find(
-      (q) => !q.ragFetched && !q.ragLoading && q.ragError == null,
-    );
-    if (next) void ensureRagAnswer(next);
-  }, [loading, ragStateKey, questions, ensureRagAnswer]);
+  // Note: RAG answers are fetched lazily — only when the user expands a
+  // question via handleQuestionOpenChange. Pre-fetching for every question on
+  // quarter change burned 2 LLM calls per question (rerank + synthesis) and
+  // made dropdown changes feel slow despite the answers never being visible
+  // until the user clicked.
 
   const handleQuestionOpenChange = (item: QuestionItem, open: boolean) => {
     setOpenQuestions((prev) => {
@@ -454,7 +469,7 @@ export default function EarningsCallStrategist() {
                 Grounding CFO-style answers from uploaded documents (hybrid search + rerank)…
               </p>
             )}
-            {companiesFromQuestions.length > 0 && (
+            {allCompanies.length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <span className="text-sm font-medium text-slate-700">
                   Filter list by company:
@@ -470,7 +485,7 @@ export default function EarningsCallStrategist() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">All companies</SelectItem>
-                    {companiesFromQuestions.map((c) => (
+                    {allCompanies.map((c) => (
                       <SelectItem key={c} value={c}>
                         {c}
                       </SelectItem>

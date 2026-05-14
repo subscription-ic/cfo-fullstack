@@ -138,7 +138,15 @@ def process_upload_file(
         elif is_pdf:
             pages = extract_pdf_pages(raw)
             if not pages:
-                return FileUploadResult(filename=filename, ok=False, error="No extractable text")
+                return FileUploadResult(
+                    filename=filename,
+                    ok=False,
+                    error=(
+                        "No extractable text — the PDF appears to be image-only "
+                        "(scanned). Install Tesseract OCR on the server or "
+                        "upload a text-based PDF."
+                    ),
+                )
             page_analyses = analyze_pages(pages, company=company)
             # Page-level chunking: each PDF page is one chunk. Preserves citation
             # fidelity (every chunk maps to a single page) and keeps retrieved
@@ -317,6 +325,35 @@ def process_upload_file(
                 quarter=quarter,
                 transcript_text=full_text,
             )
+
+        if background_tasks is not None:
+            # FIN always (re)generates predicted Q&A for this quarter.
+            # PR / PPT override only when a question set already exists — they
+            # refine the prep, they don't seed it.
+            if canonical_doc_type == "FIN":
+                from app.modules.predicted_qa.refresh import refresh_for_quarter
+
+                background_tasks.add_task(
+                    refresh_for_quarter,
+                    supabase,
+                    company=company,
+                    fiscal_year=fiscal_year,
+                    quarter=quarter,
+                )
+            elif canonical_doc_type in ("PR", "PPT"):
+                from app.modules.predicted_qa.refresh import (
+                    has_existing_questions,
+                    refresh_for_quarter,
+                )
+
+                if has_existing_questions(supabase, company, fiscal_year, quarter):
+                    background_tasks.add_task(
+                        refresh_for_quarter,
+                        supabase,
+                        company=company,
+                        fiscal_year=fiscal_year,
+                        quarter=quarter,
+                    )
 
         return FileUploadResult(
             filename=filename,

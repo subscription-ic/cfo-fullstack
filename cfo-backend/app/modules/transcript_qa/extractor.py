@@ -11,12 +11,17 @@ from __future__ import annotations
 import json
 import logging
 import re
+import uuid
 from typing import Any
 
 from supabase import Client
 
 from app.infrastructure.llm import chat_completion
-from app.shared.constants import EXPERT_PERSONA, INDUSTRY_AWARE_DIRECTIVE
+from app.shared.constants import (
+    CATEGORY_TAXONOMY_QUESTION_PROMPT,
+    EXPERT_PERSONA,
+    INDUSTRY_AWARE_DIRECTIVE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,30 +31,30 @@ EXTRACTION_SYSTEM_PROMPT = (
     + "\n\n"
     + INDUSTRY_AWARE_DIRECTIVE
     + "\n\n"
-) + """You are a financial transcript parser. You extract the analyst Q&A \
+    + """You are a financial transcript parser. You extract the analyst Q&A \
 section from earnings call transcripts.
 
 Output rules:
-- Only return questions asked by outside analysts / investors during the Q&A portion of the call. \
-Ignore operator remarks, prepared remarks, management opening statements, and any forward-looking \
-disclaimers read by the IR team.
-- Include the matching management answer if one is clearly present. If the answer is split across \
-multiple speakers, concatenate them.
-- Identify the analyst's name and firm when stated (e.g. "Ankit Sharma, Morgan Stanley").
-- Classify each question into a two-level taxonomy. `category_l1` MUST be one of this EXACT list \
-(copy the label verbatim, including punctuation and capitalization):
-    Growth, Margins, Guidance, Capital & Liquidity, Asset Quality, Segment Performance, Demand, \
-Cost Structure, M&A, Risk & Regulation, Strategy, Other.
-  `category_l2` is a short (2-5 words) specific angle under that L1 — for example "NIM Pressure", \
-"Buybacks", "NPA Trend", "CASA Share", "Fee Income", "Tech Stack".
-- `category` is a legacy flat label; set it to the lowercase snake_case of the L1 (e.g. \
-"margins", "asset_quality", "capital_and_liquidity", "risk_and_regulation").
+- Only return questions asked by outside analysts / investors during the Q&A \
+portion of the call. Ignore operator remarks, prepared remarks, management \
+opening statements, and any forward-looking disclaimers read by the IR team.
+- Include the matching management answer if one is clearly present. If the \
+answer is split across multiple speakers, concatenate them.
+- Identify the analyst's name and firm when stated (e.g. "Ankit Sharma, \
+Morgan Stanley").
+- Classify each question using the closed taxonomy below. The meta-instruction \
+and 4-step reasoning procedure are MANDATORY — apply them to every extracted \
+question and emit the trace in `_reasoning`.
 - Return STRICT JSON. No markdown, no commentary.
+
 """
+    + CATEGORY_TAXONOMY_QUESTION_PROMPT
+)
 
 EXTRACTION_USER_TEMPLATE = """Extract the analyst Q&A from the transcript below.
 
-Return a JSON object of the form:
+For each question, run the 4-step reasoning procedure from the system prompt \
+and emit the result as:
 {{
   "questions": [
     {{
@@ -57,9 +62,10 @@ Return a JSON object of the form:
       "answer": "<management answer or empty string>",
       "answered_by": "<executive name + title if stated, else empty>",
       "asked_by": "<analyst name + firm if stated, else empty>",
-      "category": "<one of the categories listed in the system prompt>",
-      "category_l1": "<one of the L1 buckets listed in the system prompt>",
-      "category_l2": "<specific 2-5 word angle under the L1>"
+      "_reasoning": "<Steps 1-4 from the procedure, <=90 words>",
+      "category": "<snake_case of category_l1>",
+      "category_l1": "<verbatim from the L1 enum>",
+      "category_l2": "<verbatim from the L2 list for that L1>"
     }}
   ]
 }}
@@ -176,8 +182,69 @@ def extract_analyst_qa(transcript_text: str) -> list[dict[str, Any]]:
 #   - SIMILARITY_LINK_THRESHOLD: link when similarity is reasonable AND L1 categories agree.
 #   - STRONG_LINK_THRESHOLD: link regardless of category when similarity is high enough on its own
 #     (handles cases where the LLM assigned slightly different L1 labels to the same theme).
-SIMILARITY_LINK_THRESHOLD = 55.0
-STRONG_LINK_THRESHOLD = 75.0
+SIMILARITY_LINK_THRESHOLD = 70.0
+STRONG_LINK_THRESHOLD = 85.0
+
+
+def _write_audit_row(
+    supabase: Client,
+    *,
+    run_id: str,
+    run_kind: str,
+    company: str,
+    fiscal_year: int,
+    quarter: str,
+    actual_qa_id: str | None,
+    actual_question: str,
+    actual_l1: str | None,
+    actual_l2: str | None,
+    predicted_id: str | None,
+    predicted_row: dict[str, Any] | None,
+    similarity: float,
+    linked: bool,
+    link_reason: str,
+) -> None:
+    """Persist a single match-attempt trace. Fails soft: if the audit table
+    isn't present (migration 015 not yet applied) or the insert errors for
+    any other reason, the linker continues without raising."""
+    try:
+        pred_l1 = (predicted_row or {}).get("category_l1") if predicted_row else None
+        pred_l2 = (predicted_row or {}).get("category_l2") if predicted_row else None
+        l1_match: bool | None = None
+        l2_match: bool | None = None
+        if predicted_row is not None:
+            l1_match = (actual_l1 or "").strip().lower() == (pred_l1 or "").strip().lower()
+            l2_match = (actual_l2 or "").strip().lower() == (pred_l2 or "").strip().lower()
+        row = {
+            "run_id": run_id,
+            "run_kind": run_kind,
+            "company": company,
+            "fiscal_year": fiscal_year,
+            "quarter": quarter,
+            "actual_qa_id": actual_qa_id,
+            "actual_question": actual_question[:4000] if actual_question else None,
+            "actual_category_l1": actual_l1,
+            "actual_category_l2": actual_l2,
+            "predicted_qa_id_candidate": predicted_id,
+            "predicted_question": (
+                ((predicted_row or {}).get("predicted_question") or "")[:4000]
+                if predicted_row
+                else None
+            ),
+            "predicted_category_l1": pred_l1,
+            "predicted_category_l2": pred_l2,
+            "l1_match": l1_match,
+            "l2_match": l2_match,
+            "similarity": float(similarity) if similarity is not None else None,
+            "threshold_similarity": SIMILARITY_LINK_THRESHOLD,
+            "threshold_strong": STRONG_LINK_THRESHOLD,
+            "linked": bool(linked),
+            "link_reason": (link_reason or "")[:2000] or None,
+        }
+        supabase.table("match_audit_log").insert(row).execute()
+    except Exception as exc:
+        # match_audit_log table missing OR transient failure → skip audit, keep linking working.
+        logger.debug("match_audit_log insert skipped: %s", exc)
 
 
 def _fetch_predicted_candidates(
@@ -330,6 +397,7 @@ def extract_and_store_from_transcript(
 
     candidates_by_id = {str(c.get("id")): c for c in candidates if c.get("id")}
 
+    audit_run_id = str(uuid.uuid4())
     rows: list[dict[str, Any]] = []
     for q in questions:
         try:
@@ -360,6 +428,24 @@ def extract_and_store_from_transcript(
                 (reason + " ").strip()
                 + f"[Not linked: similarity {int(similarity)} < {int(SIMILARITY_LINK_THRESHOLD)}]"
             )
+
+        _write_audit_row(
+            supabase,
+            run_id=audit_run_id,
+            run_kind="extract",
+            company=company,
+            fiscal_year=fiscal_year,
+            quarter=quarter,
+            actual_qa_id=None,  # actual row hasn't been inserted yet at this point
+            actual_question=q["question"],
+            actual_l1=q.get("category_l1"),
+            actual_l2=q.get("category_l2"),
+            predicted_id=predicted_id,
+            predicted_row=cand,
+            similarity=similarity,
+            linked=linked_predicted_id is not None,
+            link_reason=reason,
+        )
 
         rows.append(
             {
@@ -412,6 +498,142 @@ def extract_and_store_from_transcript(
             return 0
     logger.info("transcript_qa: inserted %d rows for document %s", len(rows), document_id)
     return len(rows)
+
+
+def relink_actuals_to_predictions(
+    supabase: Client,
+    *,
+    company: str,
+    fiscal_year: int,
+    quarter: str,
+    overwrite_linked: bool = False,
+) -> dict[str, int]:
+    """Re-run the judge across all `actual_earnings_qa` rows for this period
+    and (re)populate `predicted_qa_id` against the current `predicted_qa` set.
+
+    Use this when predictions were generated *after* the actuals were extracted,
+    so the original extract pass had no candidates to link against.
+
+    Args:
+        overwrite_linked: when False, only fills rows where predicted_qa_id is
+        currently NULL. When True, also re-evaluates rows that already have a
+        link (useful if predictions were regenerated).
+
+    Returns: counters {"actuals": N, "linked": M, "unchanged": K, "errors": E}.
+    """
+    try:
+        resp = (
+            supabase.table("actual_earnings_qa")
+            .select("*")
+            .ilike("company", f"%{company.strip()}%")
+            .eq("fiscal_year", fiscal_year)
+            .eq("quarter", quarter)
+            .execute()
+        )
+        actuals = list(resp.data or [])
+    except Exception as exc:
+        logger.exception("relink_actuals: fetch failed: %s", exc)
+        return {"actuals": 0, "linked": 0, "unchanged": 0, "errors": 1}
+
+    if not actuals:
+        return {"actuals": 0, "linked": 0, "unchanged": 0, "errors": 0}
+
+    candidates = _fetch_predicted_candidates(supabase, company, fiscal_year, quarter)
+    if not candidates:
+        logger.info(
+            "relink_actuals: no predictions to link against for %s %s FY%s",
+            company, quarter, fiscal_year,
+        )
+        return {"actuals": len(actuals), "linked": 0, "unchanged": len(actuals), "errors": 0}
+
+    candidates_by_id = {str(c.get("id")): c for c in candidates if c.get("id")}
+
+    audit_run_id = str(uuid.uuid4())
+    linked = 0
+    unchanged = 0
+    errors = 0
+    for a in actuals:
+        if a.get("predicted_qa_id") and not overwrite_linked:
+            unchanged += 1
+            continue
+        try:
+            predicted_id, similarity, reason = judge_similarity(
+                a.get("question", ""), candidates,
+            )
+        except Exception as exc:
+            logger.warning("relink_actuals: judge failed for %s: %s", a.get("id"), exc)
+            errors += 1
+            continue
+
+        linked_predicted_id: str | None = None
+        cand = candidates_by_id.get(predicted_id) if predicted_id else None
+        if predicted_id and similarity >= STRONG_LINK_THRESHOLD:
+            linked_predicted_id = predicted_id
+        elif (
+            predicted_id
+            and similarity >= SIMILARITY_LINK_THRESHOLD
+            and cand
+            and _categories_match(a, cand)
+        ):
+            linked_predicted_id = predicted_id
+        elif predicted_id and similarity >= SIMILARITY_LINK_THRESHOLD and cand:
+            reason = (
+                (reason + " ").strip()
+                + f"[Not linked: category mismatch "
+                f"(actual={_canonical_category(a)!r}, predicted={_canonical_category(cand)!r})]"
+            )
+        elif predicted_id:
+            reason = (
+                (reason + " ").strip()
+                + f"[Not linked: similarity {int(similarity)} < {int(SIMILARITY_LINK_THRESHOLD)}]"
+            )
+
+        _write_audit_row(
+            supabase,
+            run_id=audit_run_id,
+            run_kind="relink",
+            company=company,
+            fiscal_year=fiscal_year,
+            quarter=quarter,
+            actual_qa_id=str(a.get("id")) if a.get("id") else None,
+            actual_question=a.get("question", ""),
+            actual_l1=a.get("category_l1"),
+            actual_l2=a.get("category_l2"),
+            predicted_id=predicted_id,
+            predicted_row=cand,
+            similarity=similarity,
+            linked=linked_predicted_id is not None,
+            link_reason=reason,
+        )
+
+        # Only update if something would actually change.
+        current_link = a.get("predicted_qa_id")
+        if linked_predicted_id == current_link and not overwrite_linked:
+            unchanged += 1
+            continue
+
+        try:
+            supabase.table("actual_earnings_qa").update(
+                {
+                    "predicted_qa_id": linked_predicted_id,
+                    "similarity_score": round(similarity, 2),
+                    "match_reason": reason or None,
+                }
+            ).eq("id", a["id"]).execute()
+            if linked_predicted_id:
+                linked += 1
+            else:
+                unchanged += 1
+        except Exception as exc:
+            logger.exception("relink_actuals: update failed for %s: %s", a.get("id"), exc)
+            errors += 1
+
+    return {
+        "actuals": len(actuals),
+        "linked": linked,
+        "unchanged": unchanged,
+        "errors": errors,
+    }
 
 
 def _auto_generate_predictions(

@@ -79,6 +79,7 @@ export async function fetchSimulatorSuggestedAnswer(
   question: string,
   fiscalYear?: number | null,
   quarter?: string | null,
+  company?: string | null,
 ): Promise<SimulatorSuggestedAnswerResponse> {
   const res = await fetch(`${BASE_URL}/api/simulator/suggested-answer`, {
     method: "POST",
@@ -87,6 +88,7 @@ export async function fetchSimulatorSuggestedAnswer(
       question,
       fiscal_year: fiscalYear ?? null,
       quarter: quarter ?? null,
+      company: company ?? null,
     }),
   });
   if (!res.ok) {
@@ -560,6 +562,73 @@ export async function fetchQuarterDetail(
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`Quarter detail failed (${res.status}): ${await res.text()}`);
   return res.json() as Promise<QuarterDetailResponse>;
+}
+
+export interface StockQuarterPriceRow {
+  date: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+}
+
+export interface StockQuarterPricesResponse {
+  company: string;
+  ticker: string | null;
+  currency: string | null;
+  range: { start: string; end: string } | null;
+  prices: StockQuarterPriceRow[];
+  return_pct: number | null;
+  earnings_call_dates: string[];
+  error: string | null;
+}
+
+export async function fetchStockQuarterPrices(
+  company: string,
+  fiscalYear: number,
+  quarter: string,
+): Promise<StockQuarterPricesResponse> {
+  const url = new URL(`${BASE_URL}/api/stock/quarter-prices`);
+  url.searchParams.set("company", company);
+  url.searchParams.set("fiscal_year", String(fiscalYear));
+  url.searchParams.set("quarter", quarter);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Stock prices failed (${res.status}): ${await res.text()}`);
+  return res.json() as Promise<StockQuarterPricesResponse>;
+}
+
+export interface NewsSentimentRow {
+  date: string;
+  publisher: string;
+  url: string;
+  title: string;
+  summary: string;
+  theme: string;
+  sentiment: "Positive" | "Neutral" | "Negative";
+  score: number;
+}
+
+export interface NewsSentimentResponse {
+  company: string;
+  ticker: string | null;
+  range: { start: string; end: string } | null;
+  rows: NewsSentimentRow[];
+  error: string | null;
+}
+
+export async function fetchQuarterNewsSentiment(
+  company: string,
+  fiscalYear: number,
+  quarter: string,
+): Promise<NewsSentimentResponse> {
+  const url = new URL(`${BASE_URL}/api/stock/quarter-news-sentiment`);
+  url.searchParams.set("company", company);
+  url.searchParams.set("fiscal_year", String(fiscalYear));
+  url.searchParams.set("quarter", quarter);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`News sentiment failed (${res.status}): ${await res.text()}`);
+  return res.json() as Promise<NewsSentimentResponse>;
 }
 
 export async function generateQuarterSummary(

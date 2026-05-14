@@ -18,7 +18,7 @@ from typing import Any
 
 from app.infrastructure.llm import chat_completion
 from app.shared.constants import (
-    CATEGORY_TAXONOMY_BLOCK,
+    CATEGORY_TAXONOMY_PAGE_PROMPT,
     EXPERT_PERSONA,
     INDUSTRY_AWARE_DIRECTIVE,
 )
@@ -65,21 +65,25 @@ _SYSTEM_PROMPT = (
     + "\n\n"
     + "You analyze a single page of a corporate finance document (earnings "
     "release, transcript, investor presentation, annual report, etc.). "
-    "Return STRICT JSON with keys:\n"
-    "  summary        — 2-4 sentence page summary in industry-specific "
-    "vocabulary.\n"
+    "Run the 5-step reasoning procedure from the meta-instruction below and "
+    "return STRICT JSON with these keys:\n"
+    "  summary        — 2-4 sentence page summary in industry-specific vocabulary.\n"
     "  primary_theme  — short phrase (2-6 words) capturing the dominant topic.\n"
     "  sub_themes     — array of 3-6 short phrases for secondary topics.\n"
     "  l1_heading     — the single top-level page heading (empty string if none).\n"
     "  l2_headings    — array of section sub-headings under L1 (may be empty).\n"
     "  l3_headings    — array of sub-sub-headings under L2 entries (may be empty).\n"
-    + "  " + CATEGORY_TAXONOMY_BLOCK.replace("\n", "\n  ")
-    + "\n"
+    "  _reasoning     — Steps 1-5 trace from the procedure, <=100 words.\n"
+    "  category_l1    — VERBATIM from the L1 enum below.\n"
+    "  category_l2    — VERBATIM from the L2 list for that L1.\n"
+    "  category_l3    — 2-5 word page-specific sub-angle, or empty string.\n"
+    "  category       — lowercase snake_case of category_l1.\n"
     "Headings should reflect the document's actual structure (titles, section "
     "banners, slide headers, bold labels), not your own invented taxonomy. "
-    "category_l1/l2/l3 are MANDATORY — they are the primary signal used "
-    "downstream to match this chunk against analyst questions. "
-    "No prose outside the JSON."
+    "The taxonomy fields are MANDATORY — they are the primary retrieval key "
+    "used downstream to match this chunk against analyst questions. "
+    "No prose outside the JSON.\n\n"
+    + CATEGORY_TAXONOMY_PAGE_PROMPT
 )
 
 

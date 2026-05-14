@@ -31,6 +31,10 @@ class GeneratedQuestionItem(BaseModel):
     category_l1: str | None = None
     category_l2: str | None = None
     risk: str = "medium"
+    likelihood: str | None = None
+    catalyst_type: str | None = None
+    reasoning: str | None = None
+    source_refs: list[str] = Field(default_factory=list)
 
 
 class QuestionGenerationResponse(BaseModel):

@@ -108,7 +108,7 @@ def get_key_topics(supabase: Client, company: str, num_quarters: int = 3) -> Key
                 supabase.table("document_chunks")
                 .select("metadata")
                 .in_("document_id", doc_ids)
-                .limit(800)
+                .limit(2000)
                 .execute()
             )
             for chunk in (chunks_resp.data or []):
@@ -169,7 +169,7 @@ def get_key_topics(supabase: Client, company: str, num_quarters: int = 3) -> Key
             text=name,
             weight=round(1.0 + (count - min_count) / spread * 1.0, 2),
         )
-        for name, count in topic_counter.most_common(40)
+        for name, count in topic_counter.most_common(80)
     ]
 
     return KeyTopicsResponse(topics=topics, quarters_used=quarters_used, company=company)
@@ -284,16 +284,49 @@ def get_quarter_detail(
                 if t.get("name")
             ]
             signals = row.get("signals") or []
+            deltas = row.get("deltas") or []
 
-            # Derive sentiment from signals
-            pos = [s.get("description", "") for s in signals if s.get("type") == "driver"]
-            neg = [s.get("description", "") for s in signals if s.get("type") == "risk"]
+            # Derive sentiment. Positive bucket: driver + confidence signals,
+            # plus deltas that improved. Negative bucket: risk signals, plus
+            # deltas that declined. Broader than just driver/risk so the
+            # section isn't empty when the analysis used the other signal
+            # categories.
+            pos: list[str] = []
+            neg: list[str] = []
+            for s in signals:
+                desc = (s.get("description") or "").strip()
+                if not desc:
+                    continue
+                stype = (s.get("type") or "").lower()
+                if stype in ("driver", "confidence"):
+                    pos.append(desc)
+                elif stype == "risk":
+                    neg.append(desc)
+            for d in deltas:
+                direction = (d.get("direction") or "").lower()
+                summary = (d.get("current_summary") or "").strip()
+                if not summary:
+                    continue
+                if direction == "improved":
+                    pos.append(summary)
+                elif direction == "declined":
+                    neg.append(summary)
+
+            # Dedupe while preserving order.
+            pos = list(dict.fromkeys(pos))
+            neg = list(dict.fromkeys(neg))
+
             if len(pos) > len(neg):
-                sentiment = SentimentDetail(overall="positive", positive_points=pos[:5], negative_points=neg[:5])
+                overall = "positive"
             elif len(neg) > len(pos):
-                sentiment = SentimentDetail(overall="negative", positive_points=pos[:5], negative_points=neg[:5])
+                overall = "negative"
             else:
-                sentiment = SentimentDetail(overall="neutral", positive_points=pos[:5], negative_points=neg[:5])
+                overall = "neutral"
+            sentiment = SentimentDetail(
+                overall=overall,
+                positive_points=pos[:8],
+                negative_points=neg[:8],
+            )
     except Exception:
         logger.warning("Failed to fetch analysis for quarter detail", exc_info=True)
 
@@ -502,6 +535,28 @@ def get_quarter_detail(
             ],
         )
 
+    # Last-resort sentiment derivation. Two tiers:
+    #   (a) actual Q&A exist for this period → summarize those.
+    #   (b) no actuals but uploaded documents exist → summarize their chunks.
+    # Both fire only when document_analyses gave us nothing.
+    sentiment_empty = (
+        sentiment.overall == "neutral"
+        and not sentiment.positive_points
+        and not sentiment.negative_points
+    )
+    if sentiment_empty and get_openai_client() is not None:
+        try:
+            if questions:
+                sentiment = _derive_sentiment_from_actuals(
+                    questions, company, quarter, fiscal_year,
+                )
+            else:
+                sentiment = _derive_sentiment_from_chunks(
+                    supabase, company, fiscal_year, quarter,
+                )
+        except Exception:
+            logger.warning("Sentiment LLM fallback failed", exc_info=True)
+
     return QuarterDetailResponse(
         company=company,
         fiscal_year=fiscal_year,
@@ -511,6 +566,151 @@ def get_quarter_detail(
         sentiment=sentiment,
         signals=signals,
         attendees=attendees,
+    )
+
+
+def _derive_sentiment_from_chunks(
+    supabase: Client, company: str, fiscal_year: int, quarter: str,
+) -> SentimentDetail:
+    """LLM-derive driver/risk points from a period's document chunks when no
+    transcript Q&A has been extracted yet. Lets the Sentiment section populate
+    for quarters where only filings/press-releases/decks have been uploaded."""
+    try:
+        docs_resp = (
+            supabase.table("documents")
+            .select("id")
+            .ilike("company", f"%{company.strip()}%")
+            .eq("fiscal_year", fiscal_year)
+            .eq("quarter", quarter)
+            .eq("processing_status", "completed")
+            .limit(10)
+            .execute()
+        )
+        doc_ids = [r["id"] for r in (docs_resp.data or [])]
+    except Exception:
+        return SentimentDetail()
+    if not doc_ids:
+        return SentimentDetail()
+
+    try:
+        chunks_resp = (
+            supabase.table("document_chunks")
+            .select("content, metadata")
+            .in_("document_id", doc_ids)
+            .limit(80)
+            .execute()
+        )
+        chunks = list(chunks_resp.data or [])
+    except Exception:
+        return SentimentDetail()
+    if not chunks:
+        return SentimentDetail()
+
+    # Prefer high-importance chunks, fall back to first-page order.
+    def _importance_rank(ch: dict[str, Any]) -> int:
+        meta = ch.get("metadata") or {}
+        imp = str(meta.get("importance") or "medium").lower()
+        return {"high": 0, "medium": 1, "low": 2}.get(imp, 1)
+
+    chunks.sort(key=_importance_rank)
+    excerpt_block = "\n\n".join(
+        f"[{(ch.get('metadata') or {}).get('document_type', '')}/"
+        f"{(ch.get('metadata') or {}).get('section_type', '')}] "
+        + (ch.get("content") or "")[:600]
+        for ch in chunks[:14]
+    )
+
+    prompt = (
+        f"You are reading filings, press releases, and investor materials from "
+        f"{company}'s {quarter} FY{fiscal_year}. Distill the period's sentiment.\n\n"
+        f"--- Document excerpts ---\n{excerpt_block}\n\n"
+        "Return ONLY a JSON object with three keys: overall (positive|negative|neutral), "
+        "positive_points (3-6 short bullet strings citing concrete growth drivers / "
+        "strengths with numbers or named entities), negative_points (3-6 short bullet "
+        "strings citing concrete risks / headwinds / concerns with numbers or named "
+        "entities). No markdown, no commentary."
+    )
+    raw = chat_completion(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "You distill earnings-period filings into concise driver/risk "
+                    "bullets grounded in the provided excerpts. Output strict JSON only."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+    )
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    data = json.loads(cleaned)
+    overall = str(data.get("overall", "neutral")).strip().lower()
+    if overall not in ("positive", "negative", "neutral"):
+        overall = "neutral"
+    pos = [str(p).strip() for p in (data.get("positive_points") or []) if str(p).strip()]
+    neg = [str(p).strip() for p in (data.get("negative_points") or []) if str(p).strip()]
+    return SentimentDetail(
+        overall=overall,
+        positive_points=pos[:8],
+        negative_points=neg[:8],
+    )
+
+
+def _derive_sentiment_from_actuals(
+    questions: list[QuarterQuestion],
+    company: str,
+    quarter: str,
+    fiscal_year: int,
+) -> SentimentDetail:
+    """One LLM call that turns the actual Q&A list into driver / risk points
+    when no document_analyses row exists for the period."""
+    qa_block = "\n".join(
+        f"- Q: {q.question}\n  A: {q.answer or '(no answer captured)'}"
+        for q in questions[:25]
+    )
+    prompt = (
+        f"You are reading the analyst Q&A from {company}'s {quarter} FY{fiscal_year} "
+        "earnings call. Summarize the call's sentiment from management's stated "
+        "responses.\n\n"
+        f"--- Analyst Q&A ---\n{qa_block}\n\n"
+        "Return ONLY a JSON object with three keys: overall (positive|negative|neutral), "
+        "positive_points (array of 3-6 short bullet strings stating concrete growth "
+        "drivers or strengths management cited, with numbers/named entities where "
+        "available), and negative_points (array of 3-6 short bullet strings stating "
+        "concrete risks, headwinds, or concerns the analysts/management surfaced, "
+        "with numbers/named entities where available). No markdown, no commentary."
+    )
+    raw = chat_completion(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "You distill earnings-call analyst Q&A into concise driver/risk "
+                    "bullets. Output strict JSON only."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+    )
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    data = json.loads(cleaned)
+    overall = str(data.get("overall", "neutral")).strip().lower()
+    if overall not in ("positive", "negative", "neutral"):
+        overall = "neutral"
+    pos = [str(p).strip() for p in (data.get("positive_points") or []) if str(p).strip()]
+    neg = [str(p).strip() for p in (data.get("negative_points") or []) if str(p).strip()]
+    return SentimentDetail(
+        overall=overall,
+        positive_points=pos[:8],
+        negative_points=neg[:8],
     )
 
 
