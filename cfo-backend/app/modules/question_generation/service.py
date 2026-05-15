@@ -368,6 +368,60 @@ _DOC_TYPE_PRIORITY = {
 }
 
 
+_QUARTER_MENTION_RE = re.compile(
+    r"\bQ([1-4])\s*(?:FY\s*'?(\d{2,4})|\(?(20\d{2})\)?)?\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_temporal_consistency(
+    questions: list[GeneratedQuestionItem],
+    target_quarter: str | None,
+    target_fy: int | None,
+) -> int:
+    """Flag questions whose text references a different quarter than the
+    target. Returns the count of flagged questions. Mutates `temporal_flag`
+    on each affected item.
+
+    A question is "off-target" when it mentions Q1/Q2/Q3/Q4 (with or without
+    a fiscal-year tag) AND that quarter+FY pair doesn't match the request.
+    Questions with no explicit quarter mention are NOT flagged — they're
+    fine.
+    """
+    if not target_quarter:
+        return 0
+    target_q_norm = target_quarter.strip().upper()
+    target_fy_short = str(target_fy)[-2:] if target_fy else None
+    flagged = 0
+    for q in questions:
+        text = (q.predicted_question or "") + " " + (q.suggested_answer or "")
+        mismatches: list[str] = []
+        for m in _QUARTER_MENTION_RE.finditer(text):
+            q_digit = m.group(1)
+            fy_short = m.group(2)
+            cal_year = m.group(3)
+            mentioned_q = f"Q{q_digit}".upper()
+            if mentioned_q == target_q_norm:
+                # quarter matches; only flag if an FY/year token is given AND
+                # disagrees with the target.
+                if fy_short and target_fy_short and fy_short.lstrip("0") != target_fy_short.lstrip("0"):
+                    mismatches.append(m.group(0))
+                # cal_year tokens like "(2024)" are too ambiguous (calendar vs fiscal); skip.
+                continue
+            mismatches.append(m.group(0))
+        if mismatches:
+            q.temporal_flag = "temporal_mismatch: " + ", ".join(sorted(set(mismatches))[:5])
+            flagged += 1
+    return flagged
+
+
+class NoPeriodDocumentsError(Exception):
+    """Raised when a POST-results generation has no documents tagged for the
+    exact (company, fiscal_year, quarter) requested. Letting the pipeline
+    silently fall back to thematic vector search produced cross-quarter
+    leakage where Q2/Q3 questions duplicated Q1 content."""
+
+
 def _fetch_period_chunks(
     supabase: Client, company: str, fiscal_year: int, quarter: str, limit: int
 ) -> list[dict[str, Any]]:
@@ -414,18 +468,86 @@ def _fetch_period_chunks(
     return eligible[:limit]
 
 
-def _fetch_rag_chunks(supabase: Client, req: QuestionGenerationRequest) -> str:
-    if get_openai_client() is None:
-        return ""
+def _latest_prior_period(
+    supabase: Client, company: str, fiscal_year: int, quarter: str,
+) -> tuple[int, str] | None:
+    """Return the (fiscal_year, quarter) of the most recent prior period that
+    has at least one non-transcript completed document for this company.
+    Used by PRE mode when the target period has no docs of its own."""
+    try:
+        resp = (
+            supabase.table("documents")
+            .select("fiscal_year, quarter, document_type")
+            .ilike("company", f"%{company.strip()}%")
+            .eq("processing_status", "completed")
+            .execute()
+        )
+        rows = list(resp.data or [])
+    except Exception:
+        return None
+    target_qn = _quarter_to_int(quarter)
+    if target_qn is None:
+        return None
+    candidates: list[tuple[int, int]] = []
+    for r in rows:
+        dt = str(r.get("document_type") or "")
+        if dt in _TRANSCRIPT_TYPES:
+            continue
+        try:
+            fy = int(r.get("fiscal_year")) if r.get("fiscal_year") is not None else None
+        except (TypeError, ValueError):
+            fy = None
+        qn = _quarter_to_int(r.get("quarter"))
+        if fy is None or qn is None:
+            continue
+        if (fy, qn) < (int(fiscal_year), int(target_qn)):
+            candidates.append((fy, qn))
+    if not candidates:
+        return None
+    fy, qn = max(candidates)
+    return fy, f"Q{qn}"
 
-    # When a target period is set, anchor the prompt in chunks from that exact
-    # period first. Otherwise the LLM gets generic cross-quarter themes and
-    # outputs near-identical questions for every quarter.
+
+def _fetch_rag_chunks(
+    supabase: Client, req: QuestionGenerationRequest,
+) -> tuple[str, int, int]:
+    """Returns (formatted_block, period_chunks_count, thematic_chunks_count).
+
+    POST mode: fail-fast when the target period has no documents — silently
+    falling back to thematic vector search across all of the company's
+    documents was the root cause of Q2/Q3 question duplication.
+    PRE mode: when the target period has no docs (expected before earnings),
+    use the latest prior-quarter docs and prefix the block accordingly.
+    """
+    if get_openai_client() is None:
+        return "", 0, 0
+
     period_chunks: list[dict[str, Any]] = []
+    period_label_used: str | None = None
     if req.fiscal_year and req.quarter:
         period_chunks = _fetch_period_chunks(
             supabase, req.company, int(req.fiscal_year), req.quarter.strip(), limit=14
         )
+        period_label_used = f"{req.quarter.strip()} FY{str(req.fiscal_year)[-2:]}"
+
+        if not period_chunks:
+            if req.mode == "post":
+                raise NoPeriodDocumentsError(
+                    f"No non-transcript documents tagged for {req.company} "
+                    f"{req.quarter} FY{req.fiscal_year}. Upload FIN / SUPP / PR / PPT "
+                    "material for this period before generating POST-results questions, "
+                    "or call with mode='pre' to predict from prior-quarter context."
+                )
+            # PRE mode: fall back to the latest prior quarter that actually has docs.
+            fallback = _latest_prior_period(
+                supabase, req.company, int(req.fiscal_year), req.quarter.strip(),
+            )
+            if fallback is not None:
+                fb_fy, fb_q = fallback
+                period_chunks = _fetch_period_chunks(
+                    supabase, req.company, fb_fy, fb_q, limit=14,
+                )
+                period_label_used = f"{fb_q} FY{str(fb_fy)[-2:]} (prior-quarter fallback)"
 
     period_str = ""
     if req.fiscal_year and req.quarter:
@@ -444,12 +566,22 @@ def _fetch_rag_chunks(supabase: Client, req: QuestionGenerationRequest) -> str:
             "filter_company": req.company.strip(),
             "filter_doc_type": req.document_type_filter,
             "filter_source_category": req.source_category_filter,
-            "match_count": 20,
+            "match_count": 40,  # over-fetch; we'll drop transcripts post-RPC
         }
         res = supabase.rpc("match_document_chunks", params).execute()
         rag_rows = list(res.data or [])
     except Exception:
         rag_rows = []
+
+    # Post-filter: drop any chunk whose source document is a transcript. The
+    # RPC's filter_doc_type only accepts a single positive match, not an
+    # exclusion list, so we strip transcripts here regardless of the
+    # period_chunks path's exclusion.
+    rag_rows = [
+        r for r in rag_rows
+        if str((r.get("metadata") or {}).get("document_type") or "")
+        not in _TRANSCRIPT_TYPES
+    ]
 
     # Merge: period_chunks first, then thematic vector rows we haven't already
     # included. Dedup by (document_id, chunk_index) when available, otherwise
@@ -464,12 +596,15 @@ def _fetch_rag_chunks(supabase: Client, req: QuestionGenerationRequest) -> str:
         return (row.get("content") or "")[:120]
 
     merged: list[dict[str, Any]] = []
+    period_count = 0
     for row in period_chunks:
         k = _key(row)
         if k in seen_keys:
             continue
         seen_keys.add(k)
         merged.append(row)
+        period_count += 1
+    thematic_count = 0
     if len(merged) < 14:
         for row in rag_rows:
             k = _key(row)
@@ -477,11 +612,12 @@ def _fetch_rag_chunks(supabase: Client, req: QuestionGenerationRequest) -> str:
                 continue
             seen_keys.add(k)
             merged.append(row)
+            thematic_count += 1
             if len(merged) >= 14:
                 break
 
     if not merged:
-        return ""
+        return "", 0, 0
 
     lines: list[str] = []
     for row in merged:
@@ -502,11 +638,52 @@ def _fetch_rag_chunks(supabase: Client, req: QuestionGenerationRequest) -> str:
         if isinstance(l3, list) and l3:
             heading_parts.append("L3: " + " › ".join(str(x) for x in l3[:4]))
         heading_tag = (" {" + " | ".join(heading_parts) + "}") if heading_parts else ""
+
+        # Analyst-signal extraction surfaced by ingestion summarization. These
+        # short, pre-extracted bullets give the LLM exactly the kind of
+        # anchors Rules 1-3 demand (numbers with context, named entities,
+        # catalyst events, forward-looking statements). Including them in the
+        # block does the model's spotting work for it.
+        anchors_extra: list[str] = []
+        qa = meta.get("quant_anchors") or []
+        ne = meta.get("named_entities") or []
+        ce = meta.get("catalyst_events") or []
+        fs = meta.get("forward_statements") or []
+        if isinstance(qa, list) and qa:
+            anchors_extra.append("Quant anchors: " + " | ".join(str(x) for x in qa[:6]))
+        if isinstance(ne, list) and ne:
+            anchors_extra.append("Named entities: " + " | ".join(str(x) for x in ne[:8]))
+        if isinstance(ce, list) and ce:
+            anchors_extra.append("Catalyst events: " + " | ".join(str(x) for x in ce[:5]))
+        if isinstance(fs, list) and fs:
+            anchors_extra.append("Forward statements: " + " | ".join(str(x) for x in fs[:5]))
+        anchors_block = ("\n    " + "\n    ".join(anchors_extra)) if anchors_extra else ""
+
         lines.append(
             f"- [{meta.get('document_type')}/{meta.get('source_category')}/"
             f"{meta.get('quarter')} {meta.get('fiscal_year')}]{heading_tag} {content}"
+            f"{anchors_block}"
         )
-    return "\n".join(lines)
+
+    block = "\n".join(lines)
+    # When PRE mode fell back to a prior quarter, flag the block header so the
+    # LLM doesn't synthesize "the current quarter showed X" from prior-period
+    # disclosures.
+    if (
+        req.mode == "pre"
+        and period_label_used
+        and "prior-quarter fallback" in period_label_used
+    ):
+        block = (
+            "[PRE-RESULTS MODE — target quarter has no documents yet. The "
+            f"period chunks below are from {period_label_used}; treat them as "
+            "the LATEST KNOWN state heading into the target quarter, not as "
+            "the target quarter's actuals. Generate forward-looking questions "
+            "analysts will ask ABOUT the target quarter based on this context.]\n\n"
+            + block
+        )
+
+    return block, period_count, thematic_count
 
 
 def _parse_llm_questions(raw: str, num: int) -> list[GeneratedQuestionItem]:
@@ -631,7 +808,7 @@ def run_question_generation(supabase: Client, req: QuestionGenerationRequest) ->
     req.num_questions = resolved_num
 
     actual_block, predicted_block = _fetch_historical_context(supabase, req)
-    rag_block = _fetch_rag_chunks(supabase, req)
+    rag_block, period_chunks_count, thematic_chunks_count = _fetch_rag_chunks(supabase, req)
 
     # Fetch analysis context if analysis_id is provided
     analysis_block = ""
@@ -756,22 +933,74 @@ def run_question_generation(supabase: Client, req: QuestionGenerationRequest) ->
                         )
                         continue
                 persist_errors.append(f"{q.predicted_question[:40]}…: {exc}")
+    # Auto-relink hook: when we just persisted fresh predictions for a
+    # concrete (company, fy, quarter), re-evaluate the existing actuals for
+    # the same period against the new prediction set so /debrief metrics
+    # stay current without a manual call to /api/actual-earnings-qa/relink.
+    relink_summary: dict[str, int] | None = None
+    if (
+        req.persist
+        and persist_saved > 0
+        and req.fiscal_year is not None
+        and req.quarter
+    ):
+        try:
+            from app.modules.transcript_qa.extractor import (
+                relink_actuals_to_predictions,
+            )
+            relink_summary = relink_actuals_to_predictions(
+                supabase,
+                company=req.company,
+                fiscal_year=int(req.fiscal_year),
+                quarter=req.quarter,
+                overwrite_linked=True,
+            )
+        except Exception as exc:
+            logger.warning("auto-relink after persist failed: %s", exc)
+
     if req.persist and questions and persist_saved == 0:
         raise RuntimeError(
             "Failed to persist questions to predicted_qa. "
             + ("; ".join(persist_errors[:3]) if persist_errors else "No rows saved.")
         )
 
+    # Post-generation temporal-consistency check. Flags questions whose text
+    # references a different (quarter, FY) than the request target — exactly
+    # the failure mode that surfaced when period chunks were missing and the
+    # pipeline silently fell back to prior-quarter context.
+    target_fy_int: int | None
+    try:
+        target_fy_int = int(req.fiscal_year) if req.fiscal_year is not None else None
+    except (TypeError, ValueError):
+        target_fy_int = None
+    temporal_mismatch_count = _validate_temporal_consistency(
+        questions, req.quarter, target_fy_int,
+    )
+
     summary = (
         f"Target count: {resolved_num}"
         f"{' (auto from last 4 quarters)' if auto_resolved else ''}. "
         f"Used {len(actual_block.splitlines())} actual Q&A lines, "
-        f"{len(predicted_block.splitlines())} predicted lines, RAG={'yes' if rag_block else 'no'}."
+        f"{len(predicted_block.splitlines())} predicted lines, "
+        f"period_chunks={period_chunks_count}, thematic_chunks={thematic_chunks_count}, "
+        f"mode={req.mode}."
     )
+    if temporal_mismatch_count > 0:
+        summary += f" Temporal mismatches: {temporal_mismatch_count}/{len(questions)}."
     if persist_errors:
         summary += f" Persist: {persist_saved}/{len(questions)} saved; {len(persist_errors)} error(s)."
+    if relink_summary is not None:
+        summary += (
+            f" Auto-relink: {relink_summary.get('linked', 0)} linked / "
+            f"{relink_summary.get('actuals', 0)} actuals "
+            f"({relink_summary.get('errors', 0)} errors)."
+        )
     return QuestionGenerationResponse(
         questions=questions,
         context_summary=summary,
         resolved_num_questions=resolved_num,
+        period_chunks_count=period_chunks_count,
+        thematic_chunks_count=thematic_chunks_count,
+        mode=req.mode,
+        temporal_mismatch_count=temporal_mismatch_count,
     )

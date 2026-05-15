@@ -182,8 +182,8 @@ def extract_analyst_qa(transcript_text: str) -> list[dict[str, Any]]:
 #   - SIMILARITY_LINK_THRESHOLD: link when similarity is reasonable AND L1 categories agree.
 #   - STRONG_LINK_THRESHOLD: link regardless of category when similarity is high enough on its own
 #     (handles cases where the LLM assigned slightly different L1 labels to the same theme).
-SIMILARITY_LINK_THRESHOLD = 70.0
-STRONG_LINK_THRESHOLD = 85.0
+SIMILARITY_LINK_THRESHOLD = 65.0
+STRONG_LINK_THRESHOLD = 75.0
 
 
 def _write_audit_row(
@@ -497,6 +497,25 @@ def extract_and_store_from_transcript(
             )
             return 0
     logger.info("transcript_qa: inserted %d rows for document %s", len(rows), document_id)
+
+    # Auto-relink hook: predictions may have been generated AFTER an earlier
+    # extract run that left actuals unlinked. After every fresh transcript
+    # extraction, re-evaluate ALL existing actuals for this period — picks up
+    # the case where predictions arrived between the last extract and this one.
+    try:
+        relink_actuals_to_predictions(
+            supabase,
+            company=company,
+            fiscal_year=fiscal_year,
+            quarter=quarter,
+            overwrite_linked=True,
+        )
+    except Exception as exc:
+        logger.warning(
+            "auto-relink after extract failed for %s %s FY%s: %s",
+            company, quarter, fiscal_year, exc,
+        )
+
     return len(rows)
 
 

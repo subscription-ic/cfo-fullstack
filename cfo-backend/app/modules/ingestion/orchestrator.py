@@ -65,6 +65,232 @@ def _insert_chunks_with_fallback(supabase: Client, rows: list[dict[str, Any]]) -
     insert_chunks(supabase, stripped)
 
 
+def reingest_document(supabase: Client, document_id: str) -> dict[str, Any]:
+    """Full re-ingestion of a previously-uploaded document.
+
+    Downloads the original file from Supabase storage, deletes the document's
+    existing chunks, then re-runs the full pipeline (extraction → page
+    analysis → chunking → embedding → insert) while preserving the same
+    document_id. Use this when the analyzer or extractor logic has been
+    upgraded and you want existing data to benefit without re-uploading.
+
+    Returns a dict with counters: {ok, chunks_deleted, chunks_inserted, error}.
+    """
+    s = get_settings()
+
+    doc_resp = (
+        supabase.table("documents").select("*").eq("id", document_id).limit(1).execute()
+    )
+    doc_rows = doc_resp.data or []
+    if not doc_rows:
+        return {"ok": False, "chunks_deleted": 0, "chunks_inserted": 0,
+                "error": f"document {document_id} not found"}
+    doc = doc_rows[0]
+
+    bucket = doc.get("storage_bucket") or s.storage_bucket
+    storage_path = doc.get("storage_path") or ""
+    if not storage_path:
+        return {"ok": False, "chunks_deleted": 0, "chunks_inserted": 0,
+                "error": "document has no storage_path"}
+    filename = doc.get("original_filename") or "unnamed"
+    content_type = doc.get("mime_type") or ""
+    company = doc.get("company") or ""
+    fiscal_year = doc.get("fiscal_year")
+    quarter = doc.get("quarter") or ""
+    document_type = doc.get("document_type") or ""
+    source_category = doc.get("source_category") or ""
+
+    try:
+        raw = supabase.storage.from_(bucket).download(storage_path.lstrip("/"))
+    except Exception as exc:
+        return {"ok": False, "chunks_deleted": 0, "chunks_inserted": 0,
+                "error": f"download failed: {exc}"}
+    if not raw:
+        return {"ok": False, "chunks_deleted": 0, "chunks_inserted": 0,
+                "error": "downloaded file is empty"}
+
+    # Wipe existing chunks first. New chunks will be inserted with fresh IDs
+    # and fresh embeddings under the same document_id.
+    try:
+        old_resp = (
+            supabase.table("document_chunks")
+            .select("id", count="exact")
+            .eq("document_id", document_id)
+            .execute()
+        )
+        deleted_count = int(getattr(old_resp, "count", 0) or 0)
+        supabase.table("document_chunks").delete().eq("document_id", document_id).execute()
+    except Exception as exc:
+        return {"ok": False, "chunks_deleted": 0, "chunks_inserted": 0,
+                "error": f"delete existing chunks failed: {exc}"}
+
+    # ------------------------------------------------------------------
+    # Replicate the extraction → analysis → chunking pipeline from
+    # process_upload_file. Kept inline to avoid restructuring the upload
+    # path for this backfill use case.
+    # ------------------------------------------------------------------
+    fn_lower = filename.lower()
+    ct_lower = (content_type or "").lower()
+    is_pdf = fn_lower.endswith(".pdf") or "pdf" in ct_lower
+    is_txt = fn_lower.endswith(".txt") or ct_lower.startswith("text/plain")
+
+    file_ref = document_file_ref(document_id)
+    citation_stem = safe_citation_stem(filename)
+
+    chunk_records: list[dict[str, Any]] = []
+    all_text_for_analysis: list[str] = []
+    page_analyses: dict[int, PageAnalysis] = {}
+    if is_txt:
+        txt = raw.decode("utf-8", errors="replace").strip()
+        if not txt:
+            return {"ok": False, "chunks_deleted": deleted_count, "chunks_inserted": 0,
+                    "error": "no extractable text"}
+        sections = segment_sections(txt)
+        dominant_section = sections[0][0] if sections else "general"
+        page_analyses = analyze_pages([(1, txt)], company=company)
+        pieces = (
+            [txt]
+            if len(txt) <= PAGE_CHUNK_MAX_CHARS
+            else chunk_text(txt, size=PAGE_CHUNK_MAX_CHARS, overlap=200)
+        )
+        for piece in pieces:
+            all_text_for_analysis.append(piece)
+            chunk_records.append({
+                "content": piece,
+                "page": 1,
+                "section": dominant_section,
+                "kind": "table" if is_table_like(piece) else "narrative",
+                "topics": detect_topics(piece),
+                "importance": importance_score(piece),
+            })
+    elif is_pdf:
+        pages = extract_pdf_pages(raw)
+        if not pages:
+            return {"ok": False, "chunks_deleted": deleted_count, "chunks_inserted": 0,
+                    "error": "no extractable text (image-only PDF?)"}
+        page_analyses = analyze_pages(pages, company=company)
+        for page_num, page_text in pages:
+            page_text = page_text.strip()
+            if not page_text:
+                continue
+            sections = segment_sections(page_text)
+            dominant_section = sections[0][0] if sections else "general"
+            page_pieces = (
+                [page_text]
+                if len(page_text) <= PAGE_CHUNK_MAX_CHARS
+                else chunk_text(page_text, size=PAGE_CHUNK_MAX_CHARS, overlap=200)
+            )
+            for piece in page_pieces:
+                all_text_for_analysis.append(piece)
+                chunk_records.append({
+                    "content": piece,
+                    "page": page_num,
+                    "section": dominant_section,
+                    "kind": "table" if is_table_like(piece) else "narrative",
+                    "topics": detect_topics(piece),
+                    "importance": importance_score(piece),
+                })
+    else:
+        return {"ok": False, "chunks_deleted": deleted_count, "chunks_inserted": 0,
+                "error": "unsupported file type"}
+
+    if not chunk_records:
+        return {"ok": False, "chunks_deleted": deleted_count, "chunks_inserted": 0,
+                "error": "no chunks after extraction"}
+
+    full_text = "\n\n".join(all_text_for_analysis)
+    detected_doc_type_hint = classify_document_type(full_text, document_type)
+    canonical_doc_type = document_type or detected_doc_type_hint
+    financial_metrics = extract_financial_metrics(full_text)
+
+    pieces = [str(r["content"]) for r in chunk_records]
+    embeddings = embed_texts(pieces)
+    dim = s.embedding_dimension
+    for emb in embeddings:
+        if len(emb) != dim:
+            return {"ok": False, "chunks_deleted": deleted_count, "chunks_inserted": 0,
+                    "error": f"embedding dim {len(emb)} != {dim}"}
+
+    chunk_rows: list[dict[str, Any]] = []
+    for i, (record, emb) in enumerate(zip(chunk_records, embeddings)):
+        content = str(record["content"])
+        page_num = int(record["page"])
+        citation = f"{file_ref}#{page_num}"
+        analysis = page_analyses.get(page_num, PageAnalysis())
+        financial_summary = [
+            f"{m.get('metric')}:{m.get('value_text')}" for m in financial_metrics[:20]
+        ]
+        meta = {
+            "company": company,
+            "fiscal_year": fiscal_year,
+            "quarter": quarter,
+            "document_type": canonical_doc_type,
+            "detected_document_type": detected_doc_type_hint,
+            "source_category": source_category,
+            "chunk_index": i,
+            "section_type": str(record["section"]),
+            "chunk_kind": str(record["kind"]),
+            "topics": record["topics"],
+            "importance_score": float(record["importance"]),
+            "financial_metrics_count_doc": len(financial_metrics),
+            "financial_metrics_doc": financial_summary,
+            "source_filename": Path(filename).name,
+            "page_number": page_num,
+            "file_ref": file_ref,
+            "citation": citation,
+            "citation_label": f"{citation_stem}#{page_num}",
+            "storage_bucket": bucket,
+            "storage_path": storage_path,
+            "mime_type": content_type or "",
+            "page_summary": analysis.summary,
+            "page_primary_theme": analysis.primary_theme,
+            "page_sub_themes": analysis.sub_themes,
+            "l1_heading": analysis.l1_heading,
+            "l2_headings": analysis.l2_headings,
+            "l3_headings": analysis.l3_headings,
+            "category_l1": analysis.category_l1,
+            "category_l2": analysis.category_l2,
+            "category_l3": analysis.category_l3,
+            "quant_anchors": analysis.quant_anchors,
+            "named_entities": analysis.named_entities,
+            "catalyst_events": analysis.catalyst_events,
+            "forward_statements": analysis.forward_statements,
+        }
+        chunk_rows.append({
+            "id": str(uuid.uuid4()),
+            "document_id": document_id,
+            "chunk_index": i,
+            "content": content,
+            "embedding": _embedding_to_db_value(emb),
+            "page_number": page_num,
+            "page_summary": analysis.summary,
+            "l1_heading": analysis.l1_heading or None,
+            "l2_headings": analysis.l2_headings,
+            "l3_headings": analysis.l3_headings,
+            "metadata": meta,
+        })
+
+    _insert_chunks_with_fallback(supabase, chunk_rows)
+
+    # Bump the document row's updated_at and mark it completed; status was
+    # already 'completed' but a fresh timestamp signals the refresh ran.
+    try:
+        supabase.table("documents").update({
+            "processing_status": "completed",
+            "error_message": None,
+            "updated_at": utc_now_iso(),
+        }).eq("id", document_id).execute()
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "chunks_deleted": deleted_count,
+        "chunks_inserted": len(chunk_rows),
+        "error": None,
+    }
+
+
 def process_upload_file(
     supabase: Client,
     upload: UploadFile,
@@ -286,6 +512,14 @@ def process_upload_file(
                 "category_l1": analysis.category_l1,
                 "category_l2": analysis.category_l2,
                 "category_l3": analysis.category_l3,
+                # Analyst-signal extraction surfaced by summarization.analyze_page.
+                # These four lists are the prime source the question generator
+                # mines to produce specific, numerically-anchored questions
+                # instead of generic FAQ items.
+                "quant_anchors": analysis.quant_anchors,
+                "named_entities": analysis.named_entities,
+                "catalyst_events": analysis.catalyst_events,
+                "forward_statements": analysis.forward_statements,
             }
             chunk_rows.append(
                 {

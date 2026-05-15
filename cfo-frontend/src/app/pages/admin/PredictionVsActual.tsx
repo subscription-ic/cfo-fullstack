@@ -773,14 +773,26 @@ export default function PredictionVsActual() {
     [quarterFilteredPredicted, quarterFilteredActuals],
   );
 
-  const accuracyMetrics = {
-    questionsCorrectlyPredicted: 75,
-    recallTopConcerns: 88,
-    answerUsefulness: 82,
-    confidenceCalibration: 79,
-    missedCategories: ['Technology', 'ESG'],
-    falsePositives: 2
-  };
+  // Derive every number that ships into the Learning Report from the live
+  // DB-backed metrics computed above. No hardcoded values — switching company
+  // / quarter must change every figure in the report.
+  const accuracyMetrics = useMemo(() => {
+    const missed = confusionL1
+      .filter((m) => m.actualSide && !m.predictedSide)
+      .map((m) => m.predictedCategory);
+    const fp = Math.max(
+      0,
+      reconciledOverall.totalPredictions - reconciledOverall.tpPrecision,
+    );
+    return {
+      questionsCorrectlyPredicted: Math.round(reconciledOverall.precision * 100),
+      recallTopConcerns: Math.round(reconciledOverall.recall * 100),
+      answerUsefulness: Math.round(reconciledOverall.f1 * 100),
+      confidenceCalibration: Math.round(reconciledOverall.substantivePrecision * 100),
+      missedCategories: missed,
+      falsePositives: fp,
+    };
+  }, [reconciledOverall, confusionL1]);
 
   return (
     <div className="p-6 space-y-6 max-w-[1800px] mx-auto">

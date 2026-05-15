@@ -330,6 +330,21 @@ def _synthesize(question: str, chunks: list[dict[str, Any]]) -> str:
             heading_lines.append(f"Sub-sections (L2): {' › '.join(str(x) for x in l2[:4])}")
         if isinstance(l3, list) and l3:
             heading_lines.append(f"Detail (L3): {' › '.join(str(x) for x in l3[:6])}")
+        # Pre-extracted analyst signals from summarization.analyze_page —
+        # surfaced so the answering CFO persona can reference specific numbers
+        # / named events instead of paraphrasing the excerpt at a generic level.
+        qa = meta.get("quant_anchors") or []
+        ne = meta.get("named_entities") or []
+        ce = meta.get("catalyst_events") or []
+        fs = meta.get("forward_statements") or []
+        if isinstance(qa, list) and qa:
+            heading_lines.append("Quant anchors: " + " | ".join(str(x) for x in qa[:6]))
+        if isinstance(ne, list) and ne:
+            heading_lines.append("Named entities: " + " | ".join(str(x) for x in ne[:6]))
+        if isinstance(ce, list) and ce:
+            heading_lines.append("Catalyst events: " + " | ".join(str(x) for x in ce[:4]))
+        if isinstance(fs, list) and fs:
+            heading_lines.append("Forward statements: " + " | ".join(str(x) for x in fs[:4]))
         headings_block = ("\n".join(heading_lines) + "\n") if heading_lines else ""
         body = (ch.get("content") or "")[:1400]
         ctx_blocks.append(
