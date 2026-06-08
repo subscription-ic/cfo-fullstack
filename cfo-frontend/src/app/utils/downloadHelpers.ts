@@ -55,7 +55,7 @@ export const generatePrepPackDocument = (quarter: string, data: any) => {
     .metric { background: #f5f7fa; padding: 15px; margin: 10px 0; border-radius: 4px; }
     .metric-label { color: #4a5568; font-size: 14px; margin-bottom: 5px; }
     .metric-value { color: #004C8F; font-size: 24px; font-weight: 600; }
-    .highlight { background: #fff3cd; padding: 15px; border-left: 4px solid #E31837; margin: 20px 0; }
+    .highlight { background: #fff3cd; padding: 15px; border-left: 4px solid #C00000; margin: 20px 0; }
     .question { background: white; padding: 15px; border: 1px solid #d4dce6; margin: 10px 0; border-radius: 4px; }
     .answer { background: #E8F2F9; padding: 15px; margin-top: 10px; border-radius: 4px; }
     .footer { margin-top: 50px; padding-top: 20px; border-top: 2px solid #d4dce6; color: #4a5568; font-size: 12px; text-align: center; }
@@ -144,7 +144,7 @@ export const generatePrepPackDocument = (quarter: string, data: any) => {
       </ul>
     </div>
     <div style="background: #fee2e2; padding: 15px; border-radius: 4px;">
-      <h3 style="color: #991b1b;">✗ Don't Say:</h3>
+      <h3 style="color: #C00000;">✗ Don't Say:</h3>
       <ul style="margin-top: 10px;">
         <li>"One-time benefits"</li>
         <li>"Uncertain macroeconomic environment"</li>
@@ -183,7 +183,7 @@ export const generateCheatSheet = (questions: any[]) => {
     .answer { color: #1a1a1a; background: #f5f7fa; padding: 10px; border-radius: 4px; margin-top: 8px; }
     .talking-points { margin-top: 8px; }
     .talking-points li { margin: 5px 0; font-size: 14px; }
-    .risk-high { color: #E31837; font-weight: 600; }
+    .risk-high { color: #C00000; font-weight: 600; }
     .risk-medium { color: #f59e0b; font-weight: 600; }
     .risk-low { color: #10b981; font-weight: 600; }
     .key-numbers { background: #E8F2F9; padding: 15px; border-radius: 4px; margin: 15px 0; }
@@ -257,7 +257,7 @@ export const generateLearningReport = (quarter: string, data: any) => {
     .metric-label { color: #4a5568; font-size: 14px; margin-bottom: 8px; }
     .metric-value { color: #004C8F; font-size: 32px; font-weight: 600; }
     .insight { background: white; padding: 15px; border-left: 4px solid #10b981; margin: 15px 0; border: 1px solid #d4dce6; border-radius: 4px; }
-    .insight.warning { border-left-color: #E31837; }
+    .insight.warning { border-left-color: #C00000; }
     .insight.info { border-left-color: #f59e0b; }
     table { width: 100%; border-collapse: collapse; margin: 20px 0; }
     th, td { padding: 12px; text-align: left; border-bottom: 1px solid #d4dce6; }
@@ -296,7 +296,7 @@ export const generateLearningReport = (quarter: string, data: any) => {
   </div>
 
   <div class="insight warning">
-    <h3 style="margin-top: 0; color: #E31837;">✗ Missed Questions</h3>
+    <h3 style="margin-top: 0; color: #C00000;">✗ Missed Questions</h3>
     <p><strong>Cloud migration focus:</strong> Analysts unexpectedly focused on technology transformation initiatives. The model did not adequately weight recent industry trends in cloud adoption. Recommendation: Increase weighting for technology transformation signals by 10 percentage points.</p>
   </div>
 
@@ -332,7 +332,7 @@ export const generateLearningReport = (quarter: string, data: any) => {
         <td>Technology</td>
         <td>0</td>
         <td>1</td>
-        <td style="color: #E31837; font-weight: 600;">0%</td>
+        <td style="color: #C00000; font-weight: 600;">0%</td>
       </tr>
       <tr>
         <td>Guidance</td>
@@ -350,7 +350,7 @@ export const generateLearningReport = (quarter: string, data: any) => {
         <td>Regulation</td>
         <td>2</td>
         <td>0</td>
-        <td style="color: #E31837; font-weight: 600;">0%</td>
+        <td style="color: #C00000; font-weight: 600;">0%</td>
       </tr>
     </tbody>
   </table>

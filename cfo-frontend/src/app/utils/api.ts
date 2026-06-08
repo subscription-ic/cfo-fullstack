@@ -54,6 +54,8 @@ export interface SimulatorSource {
   document_id: string | null;
   /** File ref # page, e.g. a1b2c3#4 */
   citation?: string;
+  /** Original uploaded file name, e.g. "Q2-FY26 Financial Results.pdf" */
+  filename?: string | null;
   excerpt: string;
   metadata: Record<string, unknown>;
   rrf_score: number;
@@ -68,6 +70,8 @@ export interface SimulatorSuggestedAnswerResponse {
   sources: SimulatorSource[];
   /** Maps citation id (without brackets) to signed PDF URL with #page */
   citation_hrefs: Record<string, string>;
+  /** Maps citation id to a human-readable "<filename> (p.N)" label */
+  citation_labels: Record<string, string>;
   retrieval_mode: string;
 }
 
@@ -98,6 +102,7 @@ export async function fetchSimulatorSuggestedAnswer(
   return {
     ...json,
     citation_hrefs: json.citation_hrefs ?? {},
+    citation_labels: json.citation_labels ?? {},
   };
 }
 
@@ -189,6 +194,28 @@ export async function deleteDocument(
   if (!res.ok && res.status !== 204) {
     throw new Error(`Delete failed (${res.status}): ${await res.text()}`);
   }
+}
+
+/** Permanently delete all data for one (company, fiscal_year, quarter):
+ *  every document and its cascade, plus the period's actual and predicted Q&A. */
+export async function deleteQuarter(
+  company: string,
+  fiscalYear: number,
+  quarter: string,
+  token: string,
+): Promise<{ documents_deleted: number }> {
+  const url = new URL(`${BASE_URL}/api/historical/quarter`);
+  url.searchParams.set("company", company);
+  url.searchParams.set("fiscal_year", String(fiscalYear));
+  url.searchParams.set("quarter", quarter);
+  const res = await fetch(url.toString(), {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 204) {
+    throw new Error(`Delete quarter failed (${res.status}): ${await res.text()}`);
+  }
+  return res.json().catch(() => ({ documents_deleted: 0 }));
 }
 
 export async function uploadDocuments(
@@ -596,6 +623,39 @@ export async function fetchStockQuarterPrices(
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`Stock prices failed (${res.status}): ${await res.text()}`);
   return res.json() as Promise<StockQuarterPricesResponse>;
+}
+
+export interface ResearchReportRow {
+  firm: string;
+  rating: string | null;
+  rating_tone: "positive" | "neutral" | "negative";
+  target_price: number | null;
+  target_price_display: string | null;
+  summary: string | null;
+}
+
+export interface ResearchReportsResponse {
+  company: string;
+  fiscal_year: number;
+  quarter: string;
+  reports: ResearchReportRow[];
+}
+
+/** Analyst research reports (firm, rating, target price, summary) for the
+ * selected company + quarter, extracted from uploaded RR documents. */
+export async function fetchResearchReports(
+  company: string,
+  fiscalYear: number,
+  quarter: string,
+): Promise<ResearchReportRow[]> {
+  const url = new URL(`${BASE_URL}/api/research-reports`);
+  url.searchParams.set("company", company);
+  url.searchParams.set("fiscal_year", String(fiscalYear));
+  url.searchParams.set("quarter", quarter);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Research reports failed (${res.status}): ${await res.text()}`);
+  const json = (await res.json()) as ResearchReportsResponse;
+  return json.reports ?? [];
 }
 
 export interface NewsSentimentRow {

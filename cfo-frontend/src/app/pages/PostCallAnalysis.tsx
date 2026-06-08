@@ -43,6 +43,7 @@ import {
   fetchQuarterDetail,
   fetchStockQuarterPrices,
   fetchQuarterNewsSentiment,
+  fetchResearchReports,
   type QuarterDetailResponse,
   type QuarterSummaryInfo,
   type StockQuarterPricesResponse,
@@ -423,6 +424,7 @@ export default function PostCallAnalysis() {
   const [stockLoading, setStockLoading] = useState(false);
   const [newsData, setNewsData] = useState<NewsSentimentResponse | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
+  const [researchReports, setResearchReports] = useState<ResearchReport[]>([]);
 
   // Mount: load canonical company list.
   useEffect(() => {
@@ -523,6 +525,37 @@ export default function PostCallAnalysis() {
       })
       .finally(() => {
         if (!cancelled) setStockLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompany, selectedQuarterKey]);
+
+  // Fetch analyst research reports (firm / rating / target / summary) for the
+  // selected company + quarter, extracted from uploaded RR documents.
+  useEffect(() => {
+    if (!selectedCompany || !selectedQuarterKey) {
+      setResearchReports([]);
+      return;
+    }
+    const [quarter, fy] = selectedQuarterKey.split('|');
+    if (!quarter || !fy) return;
+    let cancelled = false;
+    fetchResearchReports(selectedCompany, Number(fy), quarter)
+      .then((rows) => {
+        if (cancelled) return;
+        setResearchReports(
+          rows.map((r) => ({
+            firm: r.firm,
+            rating: r.rating ?? '—',
+            ratingTone: r.rating_tone,
+            targetPrice: r.target_price_display ?? '—',
+            summary: r.summary ?? '',
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setResearchReports([]);
       });
     return () => {
       cancelled = true;
@@ -664,9 +697,13 @@ export default function PostCallAnalysis() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showHdfcMock, dynamicSentimentRows, newsSentimentRows, quarterDateRange]);
 
-  const activeResearchReports: ResearchReport[] = showHdfcMock
-    ? HDFC_RESEARCH_REPORTS
-    : [];
+  // Prefer real extracted reports for the selected company+quarter; fall back
+  // to the HDFC demo data only when nothing has been uploaded for this combo.
+  const activeResearchReports: ResearchReport[] = researchReports.length
+    ? researchReports
+    : showHdfcMock
+      ? HDFC_RESEARCH_REPORTS
+      : [];
 
   const sentimentTotalPages = useMemo(
     () => Math.max(1, Math.ceil(activeSentimentData.length / SENTIMENT_PAGE_SIZE)),
@@ -843,7 +880,7 @@ export default function PostCallAnalysis() {
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-slate-700">Company:</span>
               <Select value={selectedCompany} onValueChange={setSelectedCompany}>
-                <SelectTrigger className="w-[240px] border-[#ED232A]/40">
+                <SelectTrigger className="w-[240px] border-[#C00000]/40">
                   <SelectValue placeholder="Pick a company" />
                 </SelectTrigger>
                 <SelectContent>
@@ -866,7 +903,7 @@ export default function PostCallAnalysis() {
                 onValueChange={setSelectedQuarterKey}
                 disabled={!selectedCompany || quarters.length === 0}
               >
-                <SelectTrigger className="w-[200px] border-[#ED232A]/40">
+                <SelectTrigger className="w-[200px] border-[#C00000]/40">
                   <SelectValue placeholder="Pick a quarter" />
                 </SelectTrigger>
                 <SelectContent>
@@ -902,7 +939,7 @@ export default function PostCallAnalysis() {
           <Card className="border-slate-200">
             <CardContent className="p-4 space-y-1.5">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <Banknote className="w-3.5 h-3.5 text-[#ED232A]" />
+                <Banknote className="w-3.5 h-3.5 text-[#C00000]" />
                 Avg Analyst Target
               </div>
               <div className={`text-2xl font-semibold ${kpiValueClass('neutral')}`}>
@@ -920,7 +957,7 @@ export default function PostCallAnalysis() {
           <Card className="border-slate-200">
             <CardContent className="p-4 space-y-1.5">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <Gauge className="w-3.5 h-3.5 text-[#ED232A]" />
+                <Gauge className="w-3.5 h-3.5 text-[#C00000]" />
                 Net Sentiment Score
               </div>
               <div
@@ -947,7 +984,7 @@ export default function PostCallAnalysis() {
           <Card className="border-slate-200">
             <CardContent className="p-4 space-y-1.5">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <ClipboardList className="w-3.5 h-3.5 text-[#ED232A]" />
+                <ClipboardList className="w-3.5 h-3.5 text-[#C00000]" />
                 Analyst Rating Mix
               </div>
               <div className={`text-2xl font-semibold ${kpiValueClass('neutral')}`}>
@@ -965,7 +1002,7 @@ export default function PostCallAnalysis() {
           <Card className="border-slate-200">
             <CardContent className="p-4 space-y-1.5">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <TrendingUp className="w-3.5 h-3.5 text-[#ED232A]" />
+                <TrendingUp className="w-3.5 h-3.5 text-[#C00000]" />
                 Positive Sentiment Share
               </div>
               <div
@@ -989,7 +1026,7 @@ export default function PostCallAnalysis() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
-              <TrendingUp className="w-4 h-4 text-[#ED232A]" />
+              <TrendingUp className="w-4 h-4 text-[#C00000]" />
               Stock Price During Quarter
             </CardTitle>
             <p className="text-xs text-slate-500 mt-1">
@@ -1082,15 +1119,15 @@ export default function PostCallAnalysis() {
                         <ReferenceLine
                           key={`call-${d}`}
                           x={d}
-                          stroke="#ED232A"
+                          stroke="#C00000"
                           strokeDasharray="3 3"
-                          label={{ value: 'Call', fontSize: 10, fill: '#ED232A', position: 'top' }}
+                          label={{ value: 'Call', fontSize: 10, fill: '#C00000', position: 'top' }}
                         />
                       ))}
                     <Line
                       type="monotone"
                       dataKey="close"
-                      stroke="#ED232A"
+                      stroke="#C00000"
                       strokeWidth={2}
                       dot={false}
                       isAnimationActive={false}
@@ -1106,7 +1143,7 @@ export default function PostCallAnalysis() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
-              <Activity className="w-4 h-4 text-[#ED232A]" />
+              <Activity className="w-4 h-4 text-[#C00000]" />
               Market Impact Story
             </CardTitle>
           </CardHeader>
@@ -1123,11 +1160,11 @@ export default function PostCallAnalysis() {
                       <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
                       <XAxis dataKey="firm" tick={{ fontSize: 11, fill: '#64748b' }} interval={0} angle={-15} textAnchor="end" height={60} />
                       <YAxis
-                        domain={[1700, 2300]}
+                        domain={['auto', 'auto']}
                         tick={{ fontSize: 11, fill: '#64748b' }}
                       />
                       <Tooltip formatter={(v: number) => fmtINR(v)} />
-                      <Bar dataKey="target" fill="#ED232A" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="target" fill="#C00000" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1151,7 +1188,7 @@ export default function PostCallAnalysis() {
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Area type="monotone" dataKey="positive" name="Positive" stackId="1" stroke="#16a34a" fill="#bbf7d0" />
                       <Area type="monotone" dataKey="neutral" name="Neutral" stackId="1" stroke="#94a3b8" fill="#e2e8f0" />
-                      <Area type="monotone" dataKey="negative" name="Negative" stackId="1" stroke="#dc2626" fill="#fecaca" />
+                      <Area type="monotone" dataKey="negative" name="Negative" stackId="1" stroke="#C00000" fill="#fecaca" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1161,10 +1198,10 @@ export default function PostCallAnalysis() {
         </Card>
 
         {/* AI Insight Summary — derived */}
-        <Card className="border-[#ED232A]/30 bg-[#FEE2E2]/40">
+        <Card className="border-[#C00000]/30 bg-[#FEE2E2]/40">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm text-[#8B1319]">
-              <Sparkles className="w-4 h-4 text-[#ED232A]" />
+            <CardTitle className="flex items-center gap-2 text-sm text-[#C00000]">
+              <Sparkles className="w-4 h-4 text-[#C00000]" />
               AI Insight Summary
             </CardTitle>
             <p className="text-xs text-slate-500 mt-1">
@@ -1174,7 +1211,7 @@ export default function PostCallAnalysis() {
           <CardContent className="space-y-2">
             {aiInsights.map((i) => (
               <div key={i.label} className="flex items-start gap-2 text-sm">
-                <Target className="w-3.5 h-3.5 text-[#ED232A] mt-1 shrink-0" />
+                <Target className="w-3.5 h-3.5 text-[#C00000] mt-1 shrink-0" />
                 <p className="text-slate-700">
                   <span className="font-semibold text-slate-900">{i.label}:</span> {i.body}
                 </p>

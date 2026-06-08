@@ -13,6 +13,7 @@ from app.modules.historical import api as historical_api
 from app.modules.ingestion import api as ingestion_api
 from app.modules.predicted_qa import api as predicted_qa_api
 from app.modules.question_generation import api as question_generation_api
+from app.modules.research_reports import api as research_reports_api
 from app.modules.simulator_rag import api as simulator_rag_api
 from app.modules.stock_prices import api as stock_prices_api
 from app.modules.transcript_qa import api as transcript_qa_api
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     application.include_router(simulator_rag_api.router, prefix="/api")
     application.include_router(analysis_api.router, prefix="/api")
     application.include_router(historical_api.router, prefix="/api")
+    application.include_router(research_reports_api.router, prefix="/api")
     application.include_router(diagnostics_api.router)
     application.include_router(stock_prices_api.router)
     return application

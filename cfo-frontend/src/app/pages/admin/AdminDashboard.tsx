@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -65,6 +65,7 @@ import {
   getAccessToken,
   uploadDocuments,
   deleteDocument,
+  deleteQuarter,
   fetchDocumentCatalog,
   runQuestionGeneration,
   fetchCompanies,
@@ -104,20 +105,7 @@ const DOC_TYPES = [
   "RR",
 ] as const;
 
-const CUSTOM_COMPANIES_STORAGE_KEY = "cfo_admin_custom_companies";
 const COMPANY_SELECT_NONE = "__none__";
-
-function readStoredCustomCompanies(): string[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_COMPANIES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
-  } catch {
-    return [];
-  }
-}
 
 function sourceCategoryForDocType(documentType: string): string {
   if (
@@ -432,9 +420,7 @@ export default function AdminDashboard() {
 
   const [companyName, setCompanyName] = useState("");
   const [newCompanyInput, setNewCompanyInput] = useState("");
-  const [customCompanies, setCustomCompanies] = useState<string[]>(() =>
-    readStoredCustomCompanies(),
-  );
+  const [deletingQuarter, setDeletingQuarter] = useState<string | null>(null);
   const [uploadDocTab, setUploadDocTab] = useState<"historical" | "current">("current");
 
   const [currentQuarterEc, setCurrentQuarterEc] = useState<UploadedFile[]>([]);
@@ -471,7 +457,7 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  useEffect(() => {
+  const refreshCompanies = useCallback(() => {
     fetchCompanies()
       .then((list) => {
         const merged = list.length > 0 ? list : ["HDFC"];
@@ -484,34 +470,22 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        CUSTOM_COMPANIES_STORAGE_KEY,
-        JSON.stringify(customCompanies),
-      );
-    } catch {
-      /* ignore quota */
-    }
-  }, [customCompanies]);
+    refreshCompanies();
+  }, [refreshCompanies]);
 
+  // Company list is backend-driven (distinct companies that have documents/Q&A).
+  // The currently-typed name is unioned in so a brand-new company is selectable
+  // as the upload target before its first document is persisted.
   const companyOptions = useMemo(() => {
     const set = new Set<string>();
     for (const c of companyPicker) {
       const t = c?.trim();
       if (t) set.add(t);
     }
-    for (const c of customCompanies) {
-      const t = c?.trim();
-      if (t) set.add(t);
-    }
-    for (const d of documentsCatalog) {
-      const t = d.company?.trim();
-      if (t) set.add(t);
-    }
     const selected = companyName.trim();
     if (selected) set.add(selected);
     return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-  }, [companyPicker, customCompanies, documentsCatalog, companyName]);
+  }, [companyPicker, companyName]);
 
   const filteredDocumentsCatalog = useMemo(() => {
     const key = companyName.trim();
@@ -521,36 +495,45 @@ export default function AdminDashboard() {
     );
   }, [documentsCatalog, companyName]);
 
-  const addCompanyToList = useCallback(
+  const docsByQuarter = useMemo(() => {
+    const m = new Map<
+      string,
+      { fiscal_year: number; quarter: string; rows: DocumentCatalogRow[] }
+    >();
+    for (const d of filteredDocumentsCatalog) {
+      const key = `${d.quarter}|${d.fiscal_year}`;
+      const group =
+        m.get(key) ?? { fiscal_year: d.fiscal_year, quarter: d.quarter, rows: [] };
+      group.rows.push(d);
+      m.set(key, group);
+    }
+    return Array.from(m.values()).sort(
+      (a, b) =>
+        b.fiscal_year - a.fiscal_year || b.quarter.localeCompare(a.quarter),
+    );
+  }, [filteredDocumentsCatalog]);
+
+  const useNewCompanyName = useCallback(
     (raw: string) => {
       const name = raw.trim();
       if (!name) {
         toast.error("Enter a company name");
         return;
       }
+      setCompanyName(name);
       const norm = name.toLowerCase();
-      const inApi = companyPicker.some((c) => c.trim().toLowerCase() === norm);
-      const inCustom = customCompanies.some((c) => c.trim().toLowerCase() === norm);
-      const inDocs = documentsCatalog.some(
-        (d) => d.company.trim().toLowerCase() === norm,
-      );
-      if (!inApi && !inCustom && !inDocs) {
-        setCustomCompanies((prev) =>
-          [...prev, name].sort((a, b) =>
-            a.localeCompare(b, undefined, { sensitivity: "base" }),
-          ),
-        );
-        toast.success("Company added to list", {
-          description: `${name} is selected for uploads and the Historical view.`,
+      const exists = companyPicker.some((c) => c.trim().toLowerCase() === norm);
+      if (exists) {
+        toast.info("Company selected", {
+          description: `${name} already exists — selected as the upload target.`,
         });
       } else {
-        toast.info("Company selected", {
-          description: `${name} was already in the list.`,
+        toast.info("New company set as upload target", {
+          description: `${name} is created in the database on its first successful upload.`,
         });
       }
-      setCompanyName(name);
     },
-    [companyPicker, customCompanies, documentsCatalog],
+    [companyPicker],
   );
 
   useEffect(() => {
@@ -604,6 +587,42 @@ export default function AdminDashboard() {
       }
     },
     [],
+  );
+
+  const handleDeleteQuarter = useCallback(
+    async (fiscalYear: number, quarter: string) => {
+      const company = companyName.trim();
+      if (!company) return;
+      const label = formatQuarterPeriod(quarter, fiscalYear);
+      const confirmed = window.confirm(
+        `Permanently delete ALL data for ${company} — ${label}?\n\n` +
+          "This removes every document for this quarter (files, vector chunks, " +
+          "extracted analyst Q&A, analyses, research reports), plus the actual " +
+          "and predicted Q&A for this quarter. This cannot be undone.",
+      );
+      if (!confirmed) return;
+      const token = getAccessToken();
+      if (!token) {
+        toast.error("You must be signed in to delete a quarter.");
+        return;
+      }
+      const key = `${quarter}|${fiscalYear}`;
+      setDeletingQuarter(key);
+      try {
+        const res = await deleteQuarter(company, fiscalYear, quarter, token);
+        toast.success(`Deleted ${company} — ${label}`, {
+          description: `${res.documents_deleted} document(s) removed.`,
+        });
+        await loadDocumentCatalog();
+        refreshCompanies();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        toast.error("Delete quarter failed", { description: msg });
+      } finally {
+        setDeletingQuarter(null);
+      }
+    },
+    [companyName, loadDocumentCatalog, refreshCompanies],
   );
 
   useEffect(() => {
@@ -772,7 +791,7 @@ export default function AdminDashboard() {
                     files,
                   )
                 }
-                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#ED232A] focus:border-[#ED232A]"
+                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#C00000] focus:border-[#C00000]"
               >
                 {YEARS.map((y) => (
                   <option key={y} value={y}>
@@ -791,7 +810,7 @@ export default function AdminDashboard() {
                     files,
                   )
                 }
-                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#ED232A] focus:border-[#ED232A]"
+                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#C00000] focus:border-[#C00000]"
               >
                 {QUARTERS.map((q) => (
                   <option key={q} value={q}>
@@ -810,7 +829,7 @@ export default function AdminDashboard() {
                     files,
                   )
                 }
-                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#ED232A] focus:border-[#ED232A]"
+                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#C00000] focus:border-[#C00000]"
               >
                 {DOC_TYPES.map((d) => (
                   <option key={d} value={d}>
@@ -876,6 +895,9 @@ export default function AdminDashboard() {
         });
       }
       void loadDocumentCatalog();
+      // A brand-new company becomes real once its first document persists —
+      // re-fetch so it appears in the Admin dropdown (and on backend-driven pages).
+      refreshCompanies();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Upload failed";
       toast.error("Upload failed", { description: message });
@@ -1086,7 +1108,7 @@ export default function AdminDashboard() {
 
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-xl text-[#8B1319]">
+                <CardTitle className="text-xl text-[#C00000]">
                   Actual Questions Review
                 </CardTitle>
                 <CardDescription>
@@ -1229,7 +1251,7 @@ export default function AdminDashboard() {
 
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-xl text-[#8B1319]">
+                <CardTitle className="text-xl text-[#C00000]">
                   Predicted Questions Review
                 </CardTitle>
                 <CardDescription>
@@ -1357,7 +1379,7 @@ export default function AdminDashboard() {
 
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-xl text-[#8B1319]">
+                <CardTitle className="text-xl text-[#C00000]">
                   Predicted vs Actual Questions Comparison
                 </CardTitle>
                 <CardDescription>
@@ -1580,7 +1602,7 @@ export default function AdminDashboard() {
                 </Button>
                 <Button
                   onClick={handleSaveQuestion}
-                  className="bg-[#ED232A] hover:bg-[#C11B22] text-white"
+                  className="bg-[#C00000] hover:bg-[#C00000] text-white"
                 >
                   {isAddMode ? "Add Record" : "Save Changes"}
                 </Button>
@@ -1594,12 +1616,13 @@ export default function AdminDashboard() {
             {/* Section 1: Company Name */}
             <Card className="border-slate-200">
               <CardHeader>
-                <CardTitle className="text-xl text-[#8B1319]">
+                <CardTitle className="text-xl text-[#C00000]">
                   Company Profile
                 </CardTitle>
                 <CardDescription>
                   Select the company for uploads, question generation, and the Historical document
-                  list. Add a new name to extend the dropdown (saved in this browser).
+                  list. The dropdown is driven by companies that already have data — a new company
+                  is created in the database on its first successful upload.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6 max-w-xl">
@@ -1613,7 +1636,7 @@ export default function AdminDashboard() {
                   >
                     <SelectTrigger
                       id="company-select"
-                      className="border-slate-200 focus:border-[#ED232A] focus:ring-[#ED232A]"
+                      className="border-slate-200 focus:border-[#C00000] focus:ring-[#C00000]"
                     >
                       <SelectValue placeholder="Select a company…" />
                     </SelectTrigger>
@@ -1630,7 +1653,7 @@ export default function AdminDashboard() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="newCompany">Add company to list</Label>
+                  <Label htmlFor="newCompany">New company (created on first upload)</Label>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <Input
                       id="newCompany"
@@ -1640,23 +1663,23 @@ export default function AdminDashboard() {
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
-                          addCompanyToList(newCompanyInput);
+                          useNewCompanyName(newCompanyInput);
                           setNewCompanyInput("");
                         }
                       }}
-                      className="focus:border-[#ED232A] focus:ring-[#ED232A] sm:flex-1"
+                      className="focus:border-[#C00000] focus:ring-[#C00000] sm:flex-1"
                     />
                     <Button
                       type="button"
                       variant="secondary"
-                      className="shrink-0 border border-[#ED232A]/30 text-[#8B1319]"
+                      className="shrink-0 border border-[#C00000]/30 text-[#C00000]"
                       onClick={() => {
-                        addCompanyToList(newCompanyInput);
+                        useNewCompanyName(newCompanyInput);
                         setNewCompanyInput("");
                       }}
                     >
                       <Plus className="h-4 w-4 mr-1.5" />
-                      Add
+                      Use
                     </Button>
                   </div>
                 </div>
@@ -1677,7 +1700,7 @@ export default function AdminDashboard() {
                 <Card className="border-slate-200">
                   <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <CardTitle className="flex items-center gap-2 text-xl text-[#8B1319]">
+                      <CardTitle className="flex items-center gap-2 text-xl text-[#C00000]">
                         <FileText className="h-5 w-5 shrink-0" />
                         Ingested documents
                       </CardTitle>
@@ -1690,7 +1713,7 @@ export default function AdminDashboard() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="border-[#ED232A]/40 text-[#8B1319] shrink-0"
+                      className="border-[#C00000]/40 text-[#C00000] shrink-0"
                       onClick={() => void loadDocumentCatalog()}
                       disabled={documentsLoading || !getAccessToken()}
                     >
@@ -1709,12 +1732,12 @@ export default function AdminDashboard() {
                       </div>
                     ) : documentsLoading ? (
                       <div className="flex items-center justify-center gap-2 py-16 text-slate-600 text-sm">
-                        <Loader2 className="h-5 w-5 animate-spin text-[#ED232A]" />
+                        <Loader2 className="h-5 w-5 animate-spin text-[#C00000]" />
                         Loading documents…
                       </div>
                     ) : !companyName.trim() ? (
                       <div className="rounded-lg border border-dashed border-slate-200 p-5 text-sm text-slate-700 bg-slate-50/60">
-                        <p className="font-medium text-[#8B1319] mb-1">Select a company</p>
+                        <p className="font-medium text-[#C00000] mb-1">Select a company</p>
                         <p>
                           Choose a company in <strong>Company Profile</strong> to see ingested
                           documents for that company only.
@@ -1748,45 +1771,92 @@ export default function AdminDashboard() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {filteredDocumentsCatalog.map((row) => {
-                              const label =
-                                row.original_filename ||
-                                `${formatDocumentTypeLabel(row.document_type)} — ${formatQuarterPeriod(row.quarter, row.fiscal_year)}`;
-                              const isDeleting = deletingDocId === row.id;
+                            {docsByQuarter.map((group) => {
+                              const periodLabel = formatQuarterPeriod(
+                                group.quarter,
+                                group.fiscal_year,
+                              );
+                              const groupKey = `${group.quarter}|${group.fiscal_year}`;
+                              const isDeletingQuarter = deletingQuarter === groupKey;
                               return (
-                                <TableRow key={row.id}>
-                                  <TableCell className="text-sm">
-                                    {formatDocumentTypeLabel(row.document_type)}
-                                  </TableCell>
-                                  <TableCell className="text-sm whitespace-nowrap">
-                                    {formatQuarterPeriod(row.quarter, row.fiscal_year)}
-                                  </TableCell>
-                                  <TableCell className="text-sm text-slate-600 whitespace-nowrap">
-                                    {formatCatalogDate(row.created_at)}
-                                  </TableCell>
-                                  <TableCell className="text-sm text-slate-600 whitespace-nowrap">
-                                    {formatCatalogDate(row.updated_at)}
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="text-[#8B1319] hover:bg-red-50 hover:text-[#8B1319]"
-                                      onClick={() =>
-                                        void handleDeleteHistoricalDocument(row.id, label)
-                                      }
-                                      disabled={isDeleting}
-                                      aria-label={`Delete ${label}`}
+                                <Fragment key={groupKey}>
+                                  <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
+                                    <TableCell
+                                      colSpan={4}
+                                      className="text-sm font-semibold text-[#002850]"
                                     >
-                                      {isDeleting ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-4 w-4" />
-                                      )}
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
+                                      {periodLabel}
+                                      <span className="ml-2 font-normal text-slate-500">
+                                        ({group.rows.length} document
+                                        {group.rows.length === 1 ? "" : "s"})
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-[#C00000] hover:bg-red-50 hover:text-[#C00000]"
+                                        onClick={() =>
+                                          void handleDeleteQuarter(
+                                            group.fiscal_year,
+                                            group.quarter,
+                                          )
+                                        }
+                                        disabled={isDeletingQuarter}
+                                        aria-label={`Delete quarter ${periodLabel}`}
+                                      >
+                                        {isDeletingQuarter ? (
+                                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="h-4 w-4 mr-1.5" />
+                                        )}
+                                        Delete quarter
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                  {group.rows.map((row) => {
+                                    const label =
+                                      row.original_filename ||
+                                      `${formatDocumentTypeLabel(row.document_type)} — ${formatQuarterPeriod(row.quarter, row.fiscal_year)}`;
+                                    const isDeleting = deletingDocId === row.id;
+                                    return (
+                                      <TableRow key={row.id}>
+                                        <TableCell className="text-sm">
+                                          {formatDocumentTypeLabel(row.document_type)}
+                                        </TableCell>
+                                        <TableCell className="text-sm whitespace-nowrap">
+                                          {formatQuarterPeriod(row.quarter, row.fiscal_year)}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-slate-600 whitespace-nowrap">
+                                          {formatCatalogDate(row.created_at)}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-slate-600 whitespace-nowrap">
+                                          {formatCatalogDate(row.updated_at)}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-[#C00000] hover:bg-red-50 hover:text-[#C00000]"
+                                            onClick={() =>
+                                              void handleDeleteHistoricalDocument(row.id, label)
+                                            }
+                                            disabled={isDeleting}
+                                            aria-label={`Delete ${label}`}
+                                          >
+                                            {isDeleting ? (
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                              <Trash2 className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
+                                </Fragment>
                               );
                             })}
                           </TableBody>
@@ -1800,7 +1870,7 @@ export default function AdminDashboard() {
               <TabsContent value="current" className="space-y-6 mt-4">
                 <Card className="border-slate-200">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-xl text-[#8B1319]">
+                    <CardTitle className="flex items-center gap-2 text-xl text-[#C00000]">
                       <FileSpreadsheet className="h-5 w-5" />
                       Current Documents
                     </CardTitle>
@@ -1813,7 +1883,7 @@ export default function AdminDashboard() {
                         type="button"
                         variant="outline"
                         onClick={() => {}}
-                        className="border-[#ED232A] text-[#ED232A] hover:bg-[#FFE8EA]"
+                        className="border-[#C00000] text-[#C00000] hover:bg-[#FFE8EA]"
                       >
                         Fetch All Documents
                       </Button>
@@ -1840,10 +1910,10 @@ export default function AdminDashboard() {
                         htmlFor="upload-current-docs"
                         className="cursor-pointer flex flex-col items-center"
                       >
-                        <div className="h-12 w-12 rounded-full bg-[#ED232A]/10 flex items-center justify-center mb-4">
-                          <Upload className="h-6 w-6 text-[#ED232A]" />
+                        <div className="h-12 w-12 rounded-full bg-[#C00000]/10 flex items-center justify-center mb-4">
+                          <Upload className="h-6 w-6 text-[#C00000]" />
                         </div>
-                        <span className="font-medium text-[#8B1319]">
+                        <span className="font-medium text-[#C00000]">
                           Browse all files
                         </span>
                         <span className="text-sm text-slate-500 mt-1">
@@ -1882,7 +1952,7 @@ export default function AdminDashboard() {
               <Button
                 onClick={handleSave}
                 disabled={!isFormValid || uploadSubmitting}
-                className="bg-[#ED232A] hover:bg-[#C11B22] text-white px-8 py-6 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all font-medium disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+                className="bg-[#C00000] hover:bg-[#C00000] text-white px-8 py-6 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all font-medium disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
               >
                 {uploadSubmitting ? (
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
@@ -1895,7 +1965,7 @@ export default function AdminDashboard() {
 
             <Card className="border-slate-200 mb-10">
               <CardHeader>
-                <CardTitle className="text-xl text-[#8B1319]">
+                <CardTitle className="text-xl text-[#C00000]">
                   Ingestion Summary
                 </CardTitle>
                 <CardDescription>

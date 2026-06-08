@@ -4,8 +4,10 @@ import {
   fetchPredictedQuestions,
   fetchActualEarningsQA,
   fetchCompanies,
+  fetchAvailableQuarters,
   type PredictedQA,
   type ActualEarningsQARow,
+  type QuarterSummaryInfo,
 } from '../../utils/api';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -526,8 +528,9 @@ export default function PredictionVsActual() {
   const [selectedCompany, setSelectedCompany] = useState<string>('');
   const [predicted, setPredicted] = useState<PredictedQA[]>([]);
   const [actuals, setActuals] = useState<ActualEarningsQARow[]>([]);
+  const [serverQuarters, setServerQuarters] = useState<QuarterSummaryInfo[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedQuarter, setSelectedQuarter] = useState('Q1 FY26');
+  const [selectedQuarter, setSelectedQuarter] = useState('');
   useEffect(() => {
     let cancelled = false;
     fetchCompanies()
@@ -549,16 +552,19 @@ export default function PredictionVsActual() {
     Promise.all([
       fetchPredictedQuestions(selectedCompany),
       fetchActualEarningsQA(selectedCompany),
+      fetchAvailableQuarters(selectedCompany),
     ])
-      .then(([p, a]) => {
+      .then(([p, a, q]) => {
         if (cancelled) return;
         setPredicted(p);
         setActuals(a);
+        setServerQuarters(q.quarters);
       })
       .catch(() => {
         if (!cancelled) {
           setPredicted([]);
           setActuals([]);
+          setServerQuarters([]);
         }
       })
       .finally(() => {
@@ -569,19 +575,18 @@ export default function PredictionVsActual() {
     };
   }, [selectedCompany]);
 
-  const availableQuarters = useMemo(() => {
-    const set = new Set<string>();
-    for (const a of actuals) {
-      const label = periodLabelOf(a);
-      if (label !== '—') set.add(label);
-    }
-    for (const p of predicted) {
-      if (p.quarter && p.fiscal_year) {
-        set.add(`${p.quarter} FY${String(p.fiscal_year).slice(-2)}`);
-      }
-    }
-    return Array.from(set).sort().reverse();
-  }, [actuals, predicted]);
+  // Source the dropdown from the canonical Historical-hub quarter list
+  // (GET /api/historical/quarters) so it matches that page exactly and excludes
+  // quarters whose documents were deleted — even when orphaned predicted_qa /
+  // actual_earnings_qa rows linger. The backend already returns these sorted
+  // newest-first (fiscal_year DESC, then quarter DESC), so preserve that order.
+  const availableQuarters = useMemo(
+    () =>
+      serverQuarters.map(
+        (q) => `${q.quarter} FY${String(q.fiscal_year).slice(-2)}`,
+      ),
+    [serverQuarters],
+  );
 
   useEffect(() => {
     if (availableQuarters.length === 0) return;
@@ -801,7 +806,7 @@ export default function PredictionVsActual() {
         <Button 
           variant="ghost" 
           onClick={() => navigate('/dashboard')}
-          className="mb-3 text-[#ED232A] hover:text-[#B91C1C] hover:bg-[#FEE2E2]"
+          className="mb-3 text-[#C00000] hover:text-[#C00000] hover:bg-[#FEE2E2]"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Dashboard
@@ -853,7 +858,7 @@ export default function PredictionVsActual() {
           </Button>
           <Dialog>
             <DialogTrigger asChild>
-              <Button className="bg-[#ED232A] hover:bg-[#B91C1C]" onClick={handleProcessTranscript}>
+              <Button className="bg-[#C00000] hover:bg-[#C00000]" onClick={handleProcessTranscript}>
                 <Upload className="w-4 h-4 mr-2" />
                 Upload Transcript
               </Button>
@@ -870,7 +875,7 @@ export default function PredictionVsActual() {
                   <label className="text-sm font-medium text-slate-700 mb-2 block">
                     Earnings Call Transcript
                   </label>
-                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-[#ED232A]/50 transition-colors cursor-pointer">
+                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-[#C00000]/50 transition-colors cursor-pointer">
                     <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                     <p className="text-sm text-slate-600">Click to upload or drag and drop</p>
                     <p className="text-xs text-slate-500 mt-1">PDF, DOCX, or TXT</p>
@@ -880,7 +885,7 @@ export default function PredictionVsActual() {
                   <label className="text-sm font-medium text-slate-700 mb-2 block">
                     Analyst Reports (Optional)
                   </label>
-                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-[#ED232A]/50 transition-colors cursor-pointer">
+                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-[#C00000]/50 transition-colors cursor-pointer">
                     <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                     <p className="text-sm text-slate-600">Upload analyst reports</p>
                   </div>
@@ -889,12 +894,12 @@ export default function PredictionVsActual() {
                   <label className="text-sm font-medium text-slate-700 mb-2 block">
                     Management Script (Optional)
                   </label>
-                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-[#ED232A]/50 transition-colors cursor-pointer">
+                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-[#C00000]/50 transition-colors cursor-pointer">
                     <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                     <p className="text-sm text-slate-600">Upload prepared remarks</p>
                   </div>
                 </div>
-                <Button className="w-full bg-[#ED232A] hover:bg-[#B91C1C]">
+                <Button className="w-full bg-[#C00000] hover:bg-[#C00000]">
                   Process & Analyze
                 </Button>
               </div>
@@ -915,10 +920,10 @@ export default function PredictionVsActual() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
-                <Target className="w-3.5 h-3.5 text-[#ED232A]" />
+                <Target className="w-3.5 h-3.5 text-[#C00000]" />
                 Categorical Precision
               </div>
-              <div className="mt-2 text-2xl font-semibold text-[#8B1319]">
+              <div className="mt-2 text-2xl font-semibold text-[#C00000]">
                 {pct(reconciledOverall.precision)}
               </div>
               <div className="mt-1 text-xs text-slate-500">
@@ -931,10 +936,10 @@ export default function PredictionVsActual() {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
-                <Target className="w-3.5 h-3.5 text-[#ED232A]" />
+                <Target className="w-3.5 h-3.5 text-[#C00000]" />
                 Substantive Precision
               </div>
-              <div className="mt-2 text-2xl font-semibold text-[#8B1319]">
+              <div className="mt-2 text-2xl font-semibold text-[#C00000]">
                 {pct(reconciledOverall.substantivePrecision)}
               </div>
               <div className="mt-1 text-xs text-slate-500">
@@ -947,10 +952,10 @@ export default function PredictionVsActual() {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#ED232A]" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#C00000]" />
                 Recall (Matching Rate)
               </div>
-              <div className="mt-2 text-2xl font-semibold text-[#8B1319]">
+              <div className="mt-2 text-2xl font-semibold text-[#C00000]">
                 {pct(reconciledOverall.recall)}
               </div>
               <div className="mt-1 text-xs text-slate-500">
@@ -963,10 +968,10 @@ export default function PredictionVsActual() {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
-                <Brain className="w-3.5 h-3.5 text-[#ED232A]" />
+                <Brain className="w-3.5 h-3.5 text-[#C00000]" />
                 F1 Score
               </div>
-              <div className="mt-2 text-2xl font-semibold text-[#8B1319]">
+              <div className="mt-2 text-2xl font-semibold text-[#C00000]">
                 {pct(reconciledOverall.f1)}
               </div>
               <div className="mt-1 text-xs text-slate-500">
@@ -979,10 +984,10 @@ export default function PredictionVsActual() {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
-                <TrendingUp className="w-3.5 h-3.5 text-[#ED232A]" />
+                <TrendingUp className="w-3.5 h-3.5 text-[#C00000]" />
                 Top 3 Accuracy
               </div>
-              <div className="mt-2 text-2xl font-semibold text-[#8B1319]">
+              <div className="mt-2 text-2xl font-semibold text-[#C00000]">
                 {pct(topThreeAccuracy.rate)}
               </div>
               <div className="mt-1 text-xs text-slate-500">
@@ -995,10 +1000,10 @@ export default function PredictionVsActual() {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
-                <Tag className="w-3.5 h-3.5 text-[#ED232A]" />
+                <Tag className="w-3.5 h-3.5 text-[#C00000]" />
                 Theme Coverage
               </div>
-              <div className="mt-2 text-2xl font-semibold text-[#8B1319]">
+              <div className="mt-2 text-2xl font-semibold text-[#C00000]">
                 {pct(themeCoverage.rate)}
               </div>
               <div className="mt-1 text-xs text-slate-500">
@@ -1086,7 +1091,7 @@ export default function PredictionVsActual() {
                         <TableCell className="text-right">{m.fn}</TableCell>
                         <TableCell className="text-right">{pct(m.precision)}</TableCell>
                         <TableCell className="text-right">{pct(m.recall)}</TableCell>
-                        <TableCell className="text-right font-semibold text-[#8B1319]">
+                        <TableCell className="text-right font-semibold text-[#C00000]">
                           {pct(m.f1)}
                         </TableCell>
                       </TableRow>
@@ -1179,7 +1184,7 @@ export default function PredictionVsActual() {
                         <TableCell className="text-right">{m.fn}</TableCell>
                         <TableCell className="text-right">{pct(m.precision)}</TableCell>
                         <TableCell className="text-right">{pct(m.recall)}</TableCell>
-                        <TableCell className="text-right font-semibold text-[#8B1319]">
+                        <TableCell className="text-right font-semibold text-[#C00000]">
                           {pct(m.f1)}
                         </TableCell>
                       </TableRow>
@@ -1284,9 +1289,9 @@ export default function PredictionVsActual() {
                               </DialogHeader>
                               <div className="space-y-4 py-4">
                                 <div className="grid md:grid-cols-2 gap-4">
-                                  <div className="p-4 bg-[#FEE2E2] rounded-lg border border-[#ED232A]/20">
-                                    <div className="text-sm font-medium text-[#8B1319] mb-2">Predicted</div>
-                                    <p className="text-sm text-[#991B1B]">{row.predictedQuestion || 'N/A'}</p>
+                                  <div className="p-4 bg-[#FEE2E2] rounded-lg border border-[#C00000]/20">
+                                    <div className="text-sm font-medium text-[#C00000] mb-2">Predicted</div>
+                                    <p className="text-sm text-[#C00000]">{row.predictedQuestion || 'N/A'}</p>
                                   </div>
                                   <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                                     <div className="text-sm font-medium text-green-900 mb-2">Actual</div>
@@ -1324,7 +1329,7 @@ export default function PredictionVsActual() {
                                 </div>
                                 
                                 <div className="flex gap-2">
-                                  <Button className="flex-1 bg-[#ED232A] hover:bg-[#B91C1C]" onClick={handleSaveFeedback}>
+                                  <Button className="flex-1 bg-[#C00000] hover:bg-[#C00000]" onClick={handleSaveFeedback}>
                                     Save Feedback
                                   </Button>
                                   <Button variant="outline" className="flex-1" onClick={handleApproveForLearning}>

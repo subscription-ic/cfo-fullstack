@@ -16,7 +16,8 @@ from app.infrastructure.llm import chat_completion, embed_query, get_openai_clie
 from app.shared.constants import (
     EXPERT_PERSONA,
     INDUSTRY_AWARE_DIRECTIVE,
-    TRANSCRIPT_DOC_TYPES,
+    QA_EXCLUDED_DOC_TYPES,
+    QA_EXCLUDED_SOURCE_CATEGORIES,
 )
 
 RRF_K = 60
@@ -128,11 +129,15 @@ def _signed_url_open_document(
 
 def _enrich_sources_pdf_links(
     supabase: Client, sources: list[dict[str, Any]]
-) -> dict[str, str]:
-    """Add pdf_url / page_number to each source; return map citation_id -> url for inline links."""
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Add pdf_url / page_number / filename to each source. Returns
+    (hrefs, labels): hrefs maps citation_id -> signed PDF URL for inline links;
+    labels maps citation_id -> "<original filename> (p.<page>)" so the UI can
+    show the real file name instead of the citation hashcode."""
     doc_ids = {str(s["document_id"]) for s in sources if s.get("document_id")}
     doc_rows = _batch_document_storage(supabase, doc_ids)
     hrefs: dict[str, str] = {}
+    labels: dict[str, str] = {}
 
     for s in sources:
         meta = s.get("metadata") or {}
@@ -146,6 +151,15 @@ def _enrich_sources_pdf_links(
         page = _page_from_meta(meta, citation)
         s["page_number"] = page
 
+        # Expose the original file name on the source and as a citation label
+        # (falls back to the citation id when no filename is known).
+        display_name = Path(str(filename)).name if filename else ""
+        s["filename"] = display_name or None
+        if citation and citation not in labels:
+            labels[citation] = (
+                f"{display_name} (p.{page})" if display_name else citation
+            )
+
         if not bucket or not path:
             s["pdf_url"] = None
             continue
@@ -157,7 +171,7 @@ def _enrich_sources_pdf_links(
         if url and citation and citation not in hrefs:
             hrefs[citation] = url
 
-    return hrefs
+    return hrefs, labels
 
 
 def _reciprocal_rank_fusion(
@@ -409,13 +423,18 @@ def _answer_from_excerpts_only(chunks: list[dict[str, Any]]) -> str:
     )
 
 
-def _is_transcript_chunk(chunk: dict[str, Any]) -> bool:
-    """True for any chunk whose source document is an earnings-call transcript.
-    The simulator should never source its answer from transcript text — that's
-    the very class of document the analyst question came from."""
+def _is_excluded_chunk(chunk: dict[str, Any]) -> bool:
+    """True for any chunk the simulator must never source its answer from:
+    earnings-call transcripts (the very class of document the analyst question
+    came from) and third-party research reports. Checked on both document_type
+    and source_category so legacy chunks with a blank document_type are caught."""
     meta = chunk.get("metadata") or {}
     doc_type = str(meta.get("document_type") or "").strip()
-    return doc_type in TRANSCRIPT_DOC_TYPES
+    source_category = str(meta.get("source_category") or "").strip()
+    return (
+        doc_type in QA_EXCLUDED_DOC_TYPES
+        or source_category in QA_EXCLUDED_SOURCE_CATEGORIES
+    )
 
 
 def _chunk_matches_period(
@@ -440,9 +459,10 @@ def build_suggested_answer_from_uploads(
     quarter: str | None = None,
 ) -> dict[str, Any]:
     """Hybrid RAG over all chunks. The selected company scopes the retrieval.
-    Earnings-call transcript chunks (any quarter) are excluded so the simulator
-    grounds its answer in filings, press releases, presentations, and other
-    non-transcript material only. When fiscal_year+quarter are provided we
+    Earnings-call transcript chunks (any quarter) and third-party research
+    reports are excluded so the simulator grounds its answer in filings, press
+    releases, presentations, annual reports, and guidance only. When
+    fiscal_year+quarter are provided we
     prefer chunks from that exact period and only fall back to other periods
     when the period-specific pool is too small."""
     q = (question or "").strip()
@@ -451,7 +471,7 @@ def build_suggested_answer_from_uploads(
     lexical = _lexical_search_safe(supabase, q, company)
     fused = _reciprocal_rank_fusion(dense, lexical)
 
-    fused = [ch for ch in fused if not _is_transcript_chunk(ch)]
+    fused = [ch for ch in fused if not _is_excluded_chunk(ch)]
 
     # Period preference: when a target quarter is set, prioritize chunks from
     # that exact period. Reorder fused so period matches come first while
@@ -503,11 +523,12 @@ def build_suggested_answer_from_uploads(
             }
         )
 
-    citation_hrefs = _enrich_sources_pdf_links(supabase, sources)
+    citation_hrefs, citation_labels = _enrich_sources_pdf_links(supabase, sources)
 
     return {
         "answer": answer,
         "sources": sources,
         "citation_hrefs": citation_hrefs,
+        "citation_labels": citation_labels,
         "retrieval_mode": mode,
     }

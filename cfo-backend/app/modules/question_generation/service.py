@@ -14,6 +14,8 @@ from app.shared.constants import (
     CATEGORY_TAXONOMY_QUESTION_PROMPT,
     EXPERT_PERSONA,
     INDUSTRY_AWARE_DIRECTIVE,
+    QA_EXCLUDED_DOC_TYPES,
+    QA_EXCLUDED_SOURCE_CATEGORIES,
 )
 from app.modules.question_generation.schemas import (
     GeneratedQuestionItem,
@@ -353,10 +355,10 @@ def _fetch_historical_context(supabase: Client, req: QuestionGenerationRequest) 
     return "\n".join(actual_lines) if actual_lines else "(none)", "\n".join(pred_lines) if pred_lines else "(none)"
 
 
-_TRANSCRIPT_TYPES = {"TR", "current_ec", "historical_ec", "earnings_transcript"}
 # Higher = preferred as a question-generation source. FIN/SUPP carry the
-# numbers analysts will probe; PR/PPT carry the narrative; transcripts are the
-# event we're predicting against and must not leak the answers.
+# numbers analysts will probe; PR/PPT carry the narrative. Transcripts (the
+# event we're predicting against) and research reports (third-party analyst
+# content) are excluded outright — see _is_excluded_source / QA_EXCLUDED_*.
 _DOC_TYPE_PRIORITY = {
     "FIN": 5,
     "SUPP": 4,
@@ -364,8 +366,20 @@ _DOC_TYPE_PRIORITY = {
     "PPT": 3,
     "AR": 3,  # bumped: annual reports carry tax / regulatory notes that one-off filings often omit
     "GUIDE": 2,
-    "RR": 1,
 }
+
+
+def _is_excluded_source(meta: dict[str, Any]) -> bool:
+    """True for chunks that must never feed predicted Q&A: earnings-call
+    transcripts (the event we predict against) and third-party research
+    reports. Checked on both document_type and source_category so legacy
+    chunks with a blank document_type are still caught."""
+    doc_type = str(meta.get("document_type") or "").strip()
+    source_category = str(meta.get("source_category") or "").strip()
+    return (
+        doc_type in QA_EXCLUDED_DOC_TYPES
+        or source_category in QA_EXCLUDED_SOURCE_CATEGORIES
+    )
 
 
 _QUARTER_MENTION_RE = re.compile(
@@ -426,9 +440,11 @@ def _fetch_period_chunks(
     supabase: Client, company: str, fiscal_year: int, quarter: str, limit: int
 ) -> list[dict[str, Any]]:
     """Direct metadata-filtered fetch of chunks for the exact (company, FY, Q).
-    Skips transcripts — transcript content is what we're predicting against,
-    not a source of pre-call questions. Prioritises FIN/SUPP/PR/PPT over the
-    raw chunk_index order so analyst-relevant material wins the limited slots."""
+    Skips transcripts and research reports — transcript content is what we're
+    predicting against, and research reports are third-party analyst material,
+    neither of which is a valid source of pre-call questions. Prioritises
+    FIN/SUPP/PR/PPT over the raw chunk_index order so analyst-relevant material
+    wins the limited slots."""
     try:
         resp = (
             supabase.table("document_chunks")
@@ -445,8 +461,7 @@ def _fetch_period_chunks(
 
     eligible = [
         r for r in rows
-        if str((r.get("metadata") or {}).get("document_type") or "")
-        not in _TRANSCRIPT_TYPES
+        if not _is_excluded_source(r.get("metadata") or {})
     ]
 
     def _rank(row: dict[str, Any]) -> tuple[int, float, int]:
@@ -472,12 +487,13 @@ def _latest_prior_period(
     supabase: Client, company: str, fiscal_year: int, quarter: str,
 ) -> tuple[int, str] | None:
     """Return the (fiscal_year, quarter) of the most recent prior period that
-    has at least one non-transcript completed document for this company.
-    Used by PRE mode when the target period has no docs of its own."""
+    has at least one eligible (non-transcript, non-research-report) completed
+    document for this company. Used by PRE mode when the target period has no
+    docs of its own."""
     try:
         resp = (
             supabase.table("documents")
-            .select("fiscal_year, quarter, document_type")
+            .select("fiscal_year, quarter, document_type, source_category")
             .ilike("company", f"%{company.strip()}%")
             .eq("processing_status", "completed")
             .execute()
@@ -490,8 +506,7 @@ def _latest_prior_period(
         return None
     candidates: list[tuple[int, int]] = []
     for r in rows:
-        dt = str(r.get("document_type") or "")
-        if dt in _TRANSCRIPT_TYPES:
+        if _is_excluded_source(r):
             continue
         try:
             fy = int(r.get("fiscal_year")) if r.get("fiscal_year") is not None else None
@@ -533,8 +548,9 @@ def _fetch_rag_chunks(
         if not period_chunks:
             if req.mode == "post":
                 raise NoPeriodDocumentsError(
-                    f"No non-transcript documents tagged for {req.company} "
-                    f"{req.quarter} FY{req.fiscal_year}. Upload FIN / SUPP / PR / PPT "
+                    f"No eligible documents tagged for {req.company} "
+                    f"{req.quarter} FY{req.fiscal_year} (transcripts and research "
+                    "reports are excluded). Upload FIN / SUPP / PR / PPT / AR / GUIDE "
                     "material for this period before generating POST-results questions, "
                     "or call with mode='pre' to predict from prior-quarter context."
                 )
@@ -573,14 +589,13 @@ def _fetch_rag_chunks(
     except Exception:
         rag_rows = []
 
-    # Post-filter: drop any chunk whose source document is a transcript. The
-    # RPC's filter_doc_type only accepts a single positive match, not an
-    # exclusion list, so we strip transcripts here regardless of the
-    # period_chunks path's exclusion.
+    # Post-filter: drop any chunk whose source document is a transcript or
+    # research report. The RPC's filter_doc_type only accepts a single positive
+    # match, not an exclusion list, so we strip excluded sources here regardless
+    # of the period_chunks path's exclusion.
     rag_rows = [
         r for r in rag_rows
-        if str((r.get("metadata") or {}).get("document_type") or "")
-        not in _TRANSCRIPT_TYPES
+        if not _is_excluded_source(r.get("metadata") or {})
     ]
 
     # Merge: period_chunks first, then thematic vector rows we haven't already

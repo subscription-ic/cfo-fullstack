@@ -56,5 +56,23 @@ class DocumentsRepository:
         rows = res.data or []
         return rows[0] if rows else None
 
+    def find_ids_by_period(
+        self, company: str, fiscal_year: int, quarter: str
+    ) -> list[str]:
+        """Document ids for an exact (company, fiscal_year, quarter).
+
+        Exact equality (not ilike) is deliberate: this feeds a destructive
+        per-quarter delete, so "HDFC" must not match "HDFC Bank".
+        """
+        res = (
+            self._s.table("documents")
+            .select("id")
+            .eq("company", company)
+            .eq("fiscal_year", fiscal_year)
+            .eq("quarter", quarter)
+            .execute()
+        )
+        return [r["id"] for r in (res.data or []) if r.get("id")]
+
     def delete(self, document_id: str) -> None:
         self._s.table("documents").delete().eq("id", document_id).execute()

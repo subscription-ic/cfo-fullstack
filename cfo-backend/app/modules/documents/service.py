@@ -45,3 +45,42 @@ def delete_document_cascade(supabase: Client, document_id: str) -> None:
         pass
 
     repo.delete(document_id)
+
+
+def delete_quarter_cascade(
+    supabase: Client, company: str, fiscal_year: int, quarter: str
+) -> dict[str, int]:
+    """Remove every trace of a single (company, fiscal_year, quarter):
+
+    each document via the per-document cascade, plus any actual_earnings_qa
+    and predicted_qa rows tied to that period (covers manually-added Q&A with
+    no source document). Idempotent and re-runnable: an empty quarter returns
+    {"documents_deleted": 0} without error.
+    """
+    repo = DocumentsRepository(supabase)
+    doc_ids = repo.find_ids_by_period(company, fiscal_year, quarter)
+
+    deleted = 0
+    for document_id in doc_ids:
+        try:
+            delete_document_cascade(supabase, document_id)
+            deleted += 1
+        except Exception:
+            # Survive a single bad document; the op stays re-runnable.
+            continue
+
+    try:
+        supabase.table("actual_earnings_qa").delete().eq("company", company).eq(
+            "fiscal_year", fiscal_year
+        ).eq("quarter", quarter).execute()
+    except Exception:
+        pass
+
+    try:
+        supabase.table("predicted_qa").delete().eq("company", company).eq(
+            "fiscal_year", fiscal_year
+        ).eq("quarter", quarter).execute()
+    except Exception:
+        pass
+
+    return {"documents_deleted": deleted}

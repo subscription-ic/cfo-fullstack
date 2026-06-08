@@ -1,8 +1,9 @@
 """Historical Intelligence Hub endpoints."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, status
 
-from app.core.dependencies import SupabaseDep
+from app.core.dependencies import CurrentUserDep, SupabaseDep
+from app.modules.documents import service as documents_service
 from app.modules.historical import service as historical_service
 from app.modules.historical.schemas import (
     ChatRequest,
@@ -32,6 +33,24 @@ def get_available_quarters(
     company: str = Query(..., min_length=1),
 ) -> QuartersListResponse:
     return historical_service.get_available_quarters(supabase, company)
+
+
+@router.delete("/historical/quarter", status_code=status.HTTP_200_OK)
+def delete_quarter(
+    _user: CurrentUserDep,
+    supabase: SupabaseDep,
+    company: str = Query(..., min_length=1),
+    fiscal_year: int = Query(...),
+    quarter: str = Query(..., min_length=1),
+) -> dict[str, int]:
+    """Purge all data for one (company, fiscal_year, quarter): documents and
+    their cascade, plus the period's actual and predicted Q&A."""
+    try:
+        return documents_service.delete_quarter_cascade(
+            supabase, company, fiscal_year, quarter
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
 
 
 @router.get("/historical/quarter-detail", response_model=QuarterDetailResponse)

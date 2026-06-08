@@ -45,7 +45,7 @@ export default function QuarterlyIntelligenceHub() {
     value
   }));
 
-  const COLORS = ['#ED232A', '#DC2626', '#B91C1C', '#991B1B', '#7F1D1D', '#E31837', '#002850'];
+  const COLORS = ['#C00000', '#C00000', '#C00000', '#C00000', '#C00000', '#C00000', '#002850'];
 
   const handleGeneratePrepPack = () => {
     toast.loading('Generating Prep Pack...', { id: 'prep-pack' });
@@ -70,11 +70,11 @@ export default function QuarterlyIntelligenceHub() {
           <p className="text-slate-600">Historical earnings performance and intelligence summary</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={handleGeneratePrepPack} className="border-[#ED232A] text-[#ED232A] hover:bg-[#FEE2E2]">
+          <Button variant="outline" onClick={handleGeneratePrepPack} className="border-[#C00000] text-[#C00000] hover:bg-[#FEE2E2]">
             <FileText className="w-4 h-4 mr-2" />
             Generate Prep Pack
           </Button>
-          <Button onClick={() => navigate('/cfo/simulator')} className="bg-[#ED232A] hover:bg-[#B91C1C] text-white">
+          <Button onClick={() => navigate('/cfo/simulator')} className="bg-[#C00000] hover:bg-[#C00000] text-white">
             <Sparkles className="w-4 h-4 mr-2" />
             Open Simulator
           </Button>
@@ -82,12 +82,12 @@ export default function QuarterlyIntelligenceHub() {
       </div>
 
       {/* Historical Quarter Analysis - Collapsible */}
-      <Card className="border-[#ED232A]/30 shadow-lg">
+      <Card className="border-[#C00000]/30 shadow-lg">
         <CardHeader className="bg-gradient-to-r from-[#FEE2E2] to-white border-b border-[#d4dce6]">
           <div className="flex items-center justify-between">
             <CardTitle className="text-[#002850] text-2xl">Historical Quarter Analysis</CardTitle>
             <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
-              <SelectTrigger className="w-56 border-[#ED232A]">
+              <SelectTrigger className="w-56 border-[#C00000]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -111,7 +111,7 @@ export default function QuarterlyIntelligenceHub() {
             <div>
               <div className="text-xs text-slate-600 mb-1">EBITDA Margin</div>
               <div className="text-xl font-semibold text-[#002850]">{currentQuarter.ebitdaMargin}%</div>
-              <div className="text-xs text-[#ED232A]">+120 bps YoY</div>
+              <div className="text-xs text-[#C00000]">+120 bps YoY</div>
             </div>
             <div>
               <div className="text-xs text-slate-600 mb-1">vs Expectations</div>
@@ -130,7 +130,7 @@ export default function QuarterlyIntelligenceHub() {
             <AccordionItem value="pre-call" className="border rounded-lg px-4 bg-white">
               <AccordionTrigger className="hover:no-underline">
                 <div className="flex items-center gap-2">
-                  <Target className="w-5 h-5 text-[#ED232A]" />
+                  <Target className="w-5 h-5 text-[#C00000]" />
                   <span className="font-semibold text-[#002850]">Pre-Call Insights</span>
                 </div>
               </AccordionTrigger>
@@ -138,11 +138,11 @@ export default function QuarterlyIntelligenceHub() {
                 <div className="space-y-3 pt-2">
                   <div className="grid md:grid-cols-2 gap-3">
                     <div className="p-3 bg-[#FEE2E2] rounded-lg">
-                      <div className="text-xs text-[#ED232A] font-medium mb-1">Market Expectations</div>
+                      <div className="text-xs text-[#C00000] font-medium mb-1">Market Expectations</div>
                       <div className="text-sm text-slate-700">Revenue: $8.3B | EPS: $2.45</div>
                     </div>
                     <div className="p-3 bg-[#FEE2E2] rounded-lg">
-                      <div className="text-xs text-[#ED232A] font-medium mb-1">Analyst Sentiment</div>
+                      <div className="text-xs text-[#C00000] font-medium mb-1">Analyst Sentiment</div>
                       <div className="text-sm text-slate-700">15 Buy, 3 Hold, 0 Sell</div>
                     </div>
                   </div>
@@ -160,7 +160,7 @@ export default function QuarterlyIntelligenceHub() {
                     </ul>
                   </div>
                   <div className="p-3 bg-[#FEE2E2] rounded-lg">
-                    <div className="text-xs text-[#ED232A] font-medium mb-1">Predicted Question Count</div>
+                    <div className="text-xs text-[#C00000] font-medium mb-1">Predicted Question Count</div>
                     <div className="text-2xl font-semibold text-[#002850]">12-15</div>
                   </div>
                 </div>
@@ -183,8 +183,8 @@ export default function QuarterlyIntelligenceHub() {
                       <span className="text-sm text-slate-700">{highlight}</span>
                     </div>
                   ))}
-                  <div className="p-3 bg-[#FEE2E2] rounded-lg border border-[#ED232A]/20">
-                    <div className="text-xs text-[#ED232A] font-medium mb-2">Guidance Provided</div>
+                  <div className="p-3 bg-[#FEE2E2] rounded-lg border border-[#C00000]/20">
+                    <div className="text-xs text-[#C00000] font-medium mb-2">Guidance Provided</div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <div className="text-xs text-slate-600">Revenue</div>
@@ -197,10 +197,10 @@ export default function QuarterlyIntelligenceHub() {
                     </div>
                   </div>
                   <div className="p-3 bg-[#FEE2E2] rounded-lg">
-                    <div className="text-xs text-[#ED232A] font-medium mb-2">Key Themes Discussed</div>
+                    <div className="text-xs text-[#C00000] font-medium mb-2">Key Themes Discussed</div>
                     <div className="flex flex-wrap gap-1.5">
                       {currentQuarter.themes.map((theme, idx) => (
-                        <Badge key={idx} className="bg-white text-[#ED232A] text-xs border-[#ED232A]/30">
+                        <Badge key={idx} className="bg-white text-[#C00000] text-xs border-[#C00000]/30">
                           {theme}
                         </Badge>
                       ))}
@@ -214,7 +214,7 @@ export default function QuarterlyIntelligenceHub() {
             <AccordionItem value="post-call" className="border rounded-lg px-4 bg-white">
               <AccordionTrigger className="hover:no-underline">
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-[#ED232A]" />
+                  <TrendingUp className="w-5 h-5 text-[#C00000]" />
                   <span className="font-semibold text-[#002850]">Post-Call Analysis</span>
                 </div>
               </AccordionTrigger>
@@ -227,7 +227,7 @@ export default function QuarterlyIntelligenceHub() {
                       <div className="text-xs text-slate-600">Stock price movement</div>
                     </div>
                     <div className="p-3 bg-[#FEE2E2] rounded-lg">
-                      <div className="text-xs text-[#ED232A] font-medium mb-1">Questions Asked</div>
+                      <div className="text-xs text-[#C00000] font-medium mb-1">Questions Asked</div>
                       <div className="text-2xl font-semibold text-[#002850]">14</div>
                       <div className="text-xs text-slate-600">Total analyst questions</div>
                     </div>
@@ -244,11 +244,11 @@ export default function QuarterlyIntelligenceHub() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-[#E31837] font-medium mb-2">Concerns Raised</div>
+                    <div className="text-xs text-[#C00000] font-medium mb-2">Concerns Raised</div>
                     <div className="space-y-2">
                       {currentQuarter.marketChatter.negative.slice(0, 3).map((item, idx) => (
-                        <div key={idx} className="flex items-start gap-2 text-sm text-slate-700 p-2 bg-[#E31837]/5 rounded">
-                          <TrendingDown className="w-3 h-3 text-[#E31837] mt-0.5 flex-shrink-0" />
+                        <div key={idx} className="flex items-start gap-2 text-sm text-slate-700 p-2 bg-[#C00000]/5 rounded">
+                          <TrendingDown className="w-3 h-3 text-[#C00000] mt-0.5 flex-shrink-0" />
                           <span className="text-xs">{item}</span>
                         </div>
                       ))}
@@ -296,27 +296,27 @@ export default function QuarterlyIntelligenceHub() {
               {Object.entries(questionsByCategory).slice(0, 5).map(([category, count], idx) => (
                 <div key={idx} className="flex items-center justify-between">
                   <span className="text-sm text-slate-700">{category.split(' / ')[0]}</span>
-                  <Badge variant="outline" className="border-[#ED232A] text-[#ED232A]">{count}</Badge>
+                  <Badge variant="outline" className="border-[#C00000] text-[#C00000]">{count}</Badge>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-[#ED232A]/30 bg-gradient-to-br from-[#FEE2E2] to-white">
+        <Card className="border-[#C00000]/30 bg-gradient-to-br from-[#FEE2E2] to-white">
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-[#ED232A]" />
+              <Sparkles className="w-5 h-5 text-[#C00000]" />
               <CardTitle className="text-[#002850] text-lg">Quick Actions</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button className="w-full bg-[#ED232A] hover:bg-[#B91C1C] text-white" onClick={() => navigate('/cfo/simulator')}>
+            <Button className="w-full bg-[#C00000] hover:bg-[#C00000] text-white" onClick={() => navigate('/cfo/simulator')}>
               <Sparkles className="w-4 h-4 mr-2" />
               Start Simulation
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
-            <Button variant="outline" onClick={handleGeneratePrepPack} className="w-full border-[#ED232A] text-[#ED232A] hover:bg-[#FEE2E2]">
+            <Button variant="outline" onClick={handleGeneratePrepPack} className="w-full border-[#C00000] text-[#C00000] hover:bg-[#FEE2E2]">
               <FileText className="w-4 h-4 mr-2" />
               Download Prep Pack
             </Button>
@@ -337,7 +337,7 @@ export default function QuarterlyIntelligenceHub() {
                 <XAxis dataKey="quarter" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Line type="monotone" dataKey="revenue" stroke="#ED232A" strokeWidth={2} dot={{ fill: '#ED232A', r: 4 }} />
+                <Line type="monotone" dataKey="revenue" stroke="#C00000" strokeWidth={2} dot={{ fill: '#C00000', r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -354,7 +354,7 @@ export default function QuarterlyIntelligenceHub() {
                 <XAxis dataKey="quarter" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} domain={[20, 30]} />
                 <Tooltip />
-                <Bar dataKey="margin" fill="#ED232A" />
+                <Bar dataKey="margin" fill="#C00000" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -378,8 +378,8 @@ export default function QuarterlyIntelligenceHub() {
                         <div className="text-xs text-slate-600 mt-1">{q.analyst} • {q.quarter}</div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <Badge variant="outline" className="border-[#ED232A] text-[#ED232A] text-xs">{q.category.split(' / ')[0]}</Badge>
-                        <Badge className="bg-[#FEE2E2] text-[#ED232A] text-xs">Asked {q.frequency}x</Badge>
+                        <Badge variant="outline" className="border-[#C00000] text-[#C00000] text-xs">{q.category.split(' / ')[0]}</Badge>
+                        <Badge className="bg-[#FEE2E2] text-[#C00000] text-xs">Asked {q.frequency}x</Badge>
                       </div>
                     </div>
                   </AccordionTrigger>
@@ -439,7 +439,7 @@ export default function QuarterlyIntelligenceHub() {
                         <div className="font-medium text-[#002850]">{analyst.name}</div>
                         <div className="text-xs text-slate-600">{analyst.firm}</div>
                       </div>
-                      <Badge variant="outline" className="border-[#ED232A] text-[#ED232A] text-xs">
+                      <Badge variant="outline" className="border-[#C00000] text-[#C00000] text-xs">
                         Aggression: {analyst.aggressiveness}/10
                       </Badge>
                     </div>
@@ -451,7 +451,7 @@ export default function QuarterlyIntelligenceHub() {
                         <div className="text-xs text-slate-600 mb-1">Focus Areas:</div>
                         <div className="flex flex-wrap gap-1.5">
                           {analyst.focusAreas.map((area, i) => (
-                            <Badge key={i} className="bg-[#FEE2E2] text-[#ED232A] text-xs border-[#ED232A]/20">
+                            <Badge key={i} className="bg-[#FEE2E2] text-[#C00000] text-xs border-[#C00000]/20">
                               {area}
                             </Badge>
                           ))}
@@ -481,7 +481,7 @@ export default function QuarterlyIntelligenceHub() {
                       </div>
                       <Badge className={
                         peer.sentiment === 'positive' ? 'bg-[#10b981]/10 text-[#10b981] border-[#10b981]/20' :
-                        peer.sentiment === 'negative' ? 'bg-[#E31837]/10 text-[#E31837] border-[#E31837]/20' :
+                        peer.sentiment === 'negative' ? 'bg-[#C00000]/10 text-[#C00000] border-[#C00000]/20' :
                         'bg-amber-100 text-amber-800'
                       }>
                         {peer.sentiment}
@@ -493,7 +493,7 @@ export default function QuarterlyIntelligenceHub() {
                       <div className="text-xs text-slate-600">Topics Discussed:</div>
                       <div className="flex flex-wrap gap-1.5">
                         {peer.topicsAsked.map((topic, i) => (
-                          <Badge key={i} variant="outline" className="text-xs border-[#ED232A] text-[#ED232A]">
+                          <Badge key={i} variant="outline" className="text-xs border-[#C00000] text-[#C00000]">
                             {topic}
                           </Badge>
                         ))}

@@ -27,7 +27,11 @@ from app.modules.ingestion.enrichment import (
 from app.modules.ingestion.schemas import FileUploadResult
 from app.modules.ingestion.summarization import PageAnalysis, analyze_pages
 from app.modules.ingestion.text_extraction import extract_pdf_pages
-from app.shared.constants import PAGE_CHUNK_MAX_CHARS, TRANSCRIPT_DOC_TYPES
+from app.shared.constants import (
+    PAGE_CHUNK_MAX_CHARS,
+    RESEARCH_DOC_TYPES,
+    TRANSCRIPT_DOC_TYPES,
+)
 from app.shared.utils import (
     document_file_ref,
     safe_citation_stem,
@@ -558,6 +562,25 @@ def process_upload_file(
                 fiscal_year=fiscal_year,
                 quarter=quarter,
                 transcript_text=full_text,
+            )
+
+        if background_tasks is not None and canonical_doc_type in RESEARCH_DOC_TYPES:
+            # Research reports: extract the analyst firm / rating / target price
+            # for the Post-Call Analysis screen. Lazy import to avoid pulling the
+            # research_reports module (and its deps) at ingestion import time.
+            from app.modules.research_reports.extractor import (
+                extract_and_store_research_report,
+            )
+
+            background_tasks.add_task(
+                extract_and_store_research_report,
+                supabase,
+                document_id=doc_id,
+                company=company,
+                fiscal_year=fiscal_year,
+                quarter=quarter,
+                text=full_text,
+                source_filename=filename,
             )
 
         if background_tasks is not None:

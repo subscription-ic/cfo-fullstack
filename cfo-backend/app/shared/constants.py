@@ -8,6 +8,18 @@ PAGE_CHUNK_MAX_CHARS = 4000
 
 TRANSCRIPT_DOC_TYPES = {"TR", "current_ec", "historical_ec", "earnings_transcript"}
 
+# Third-party analyst research reports.
+RESEARCH_DOC_TYPES = {"RR"}
+
+# Document types that must never feed AI-predicted Q&A or simulator answers:
+# transcripts are the event we predict against; research reports are third-party
+# analyst content, not the company's own disclosures.
+QA_EXCLUDED_DOC_TYPES = TRANSCRIPT_DOC_TYPES | RESEARCH_DOC_TYPES
+
+# Belt-and-suspenders for legacy chunks whose document_type is blank but whose
+# source_category is set. Mirrors QA_EXCLUDED_DOC_TYPES at the category level.
+QA_EXCLUDED_SOURCE_CATEGORIES = {"research_report", "earnings_transcript"}
+
 # Shared expert persona — prepend this to every analysis/extraction/generation
 # system prompt so the LLM adopts a consistent seniority and perspective.
 EXPERT_PERSONA = (

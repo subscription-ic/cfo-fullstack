@@ -16,7 +16,7 @@
   --muted-foreground: #4a5568;
   --accent: #E8F2F9;
   --accent-foreground: #004C8F;
-  --destructive: #E31837;
+  --destructive: #C00000;
   --destructive-foreground: #ffffff;
   --border: #d4dce6;
   --input: transparent;
@@ -46,7 +46,7 @@
   --bank-blue-700: #004C8F;
   --bank-blue-600: #0066B3;
   --bank-blue-500: #3399CC;
-  --bank-red: #E31837;
+  --bank-red: #C00000;
   --bank-gray-100: #f5f7fa;
   --bank-gray-200: #e8ecf1;
   --bank-gray-300: #d4dce6;
