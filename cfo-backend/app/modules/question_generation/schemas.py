@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -21,6 +23,14 @@ class QuestionGenerationRequest(BaseModel):
         ),
     )
     analysis_id: str | None = Field(None, description="Use analysis context from document_analyses")
+    mode: Literal["post", "pre"] = Field(
+        "post",
+        description=(
+            "post: target quarter's docs are expected to exist (FIN/SUPP/PR). "
+            "Fail-fast when none are tagged for the target period. "
+            "pre: predict BEFORE the target quarter; use latest prior-quarter docs as context."
+        ),
+    )
 
 
 class GeneratedQuestionItem(BaseModel):
@@ -31,9 +41,24 @@ class GeneratedQuestionItem(BaseModel):
     category_l1: str | None = None
     category_l2: str | None = None
     risk: str = "medium"
+    likelihood: str | None = None
+    catalyst_type: str | None = None
+    reasoning: str | None = None
+    source_refs: list[str] = Field(default_factory=list)
+    temporal_flag: str | None = Field(
+        None,
+        description=(
+            "Populated by the post-generation temporal-consistency check when a "
+            "question references a different quarter than the target."
+        ),
+    )
 
 
 class QuestionGenerationResponse(BaseModel):
     questions: list[GeneratedQuestionItem]
     context_summary: str = ""
     resolved_num_questions: int | None = None
+    period_chunks_count: int = 0
+    thematic_chunks_count: int = 0
+    mode: Literal["post", "pre"] = "post"
+    temporal_mismatch_count: int = 0

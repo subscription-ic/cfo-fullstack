@@ -113,6 +113,33 @@ CREATE INDEX IF NOT EXISTS idx_actual_earnings_qa_period ON actual_earnings_qa (
 COMMENT ON TABLE actual_earnings_qa IS 'Historical analyst Q&A; admin review tab + question-generation context.';
 
 -- -----------------------------------------------------------------------------
+-- analyst_research_reports — per-RR-document analyst rating / target price
+--   (LLM-extracted at ingest). API: GET /api/research-reports
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS analyst_research_reports (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id          UUID NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+    company              TEXT NOT NULL,
+    fiscal_year          INTEGER NOT NULL,
+    quarter              TEXT NOT NULL,
+    firm                 TEXT,
+    rating               TEXT,
+    rating_tone          TEXT,            -- positive | neutral | negative
+    target_price         NUMERIC,
+    target_price_display TEXT,            -- e.g. "₹2,050"
+    summary              TEXT,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_analyst_research_reports_document
+    ON analyst_research_reports (document_id);
+CREATE INDEX IF NOT EXISTS idx_analyst_research_reports_company_period
+    ON analyst_research_reports (company, fiscal_year, quarter);
+
+COMMENT ON TABLE analyst_research_reports IS 'Per-document analyst research report: firm, rating, target price, summary (LLM-extracted).';
+
+-- -----------------------------------------------------------------------------
 -- match_document_chunks — vector similarity RPC (cosine distance via <=> )
 --   Called from backend via supabase.rpc("match_document_chunks", {...})
 -- -----------------------------------------------------------------------------

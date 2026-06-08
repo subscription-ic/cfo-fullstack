@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.core.dependencies import CurrentUserDep, SupabaseDep
+from app.modules.transcript_qa.extractor import relink_actuals_to_predictions
 from app.modules.transcript_qa.schemas import ActualEarningsQACreate, ActualEarningsQAUpdate
 
 router = APIRouter()
@@ -19,6 +20,34 @@ def list_actual_earnings_qa(
             query = query.ilike("company", f"%{company}%")
         response = query.execute()
         return {"data": response.data or [], "count": len(response.data or [])}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/actual-earnings-qa/relink")
+def relink_actuals(
+    supabase: SupabaseDep,
+    company: str = Query(..., description="Company name (ILIKE partial match)"),
+    fiscal_year: int = Query(..., description="Target fiscal year (e.g. 2026)"),
+    quarter: str = Query(..., description="Target quarter (Q1/Q2/Q3/Q4)"),
+    overwrite_linked: bool = Query(
+        False,
+        description="If true, re-evaluate rows that already have predicted_qa_id set",
+    ),
+):
+    """Re-run the LLM judge across `actual_earnings_qa` rows for the given
+    period and (re)populate `predicted_qa_id` against the current set of
+    `predicted_qa` rows. Use this when predictions were generated AFTER the
+    transcript was uploaded, leaving the original extract with nothing to link.
+    """
+    try:
+        return relink_actuals_to_predictions(
+            supabase,
+            company=company,
+            fiscal_year=fiscal_year,
+            quarter=quarter,
+            overwrite_linked=overwrite_linked,
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

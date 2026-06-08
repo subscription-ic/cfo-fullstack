@@ -2,14 +2,18 @@ import type { ReactNode } from 'react';
 
 /**
  * Turn inline citations like [a1b2c3#4] into links when citation_hrefs maps the id to a signed PDF URL.
+ * When `labels` maps the id to a file name (e.g. "Q2-FY26 Financial Results.pdf (p.4)"),
+ * the link text shows the file name instead of the raw hashcode id.
  */
 export function AnswerWithCitationLinks({
   text,
   hrefs,
+  labels,
   className,
 }: {
   text: string;
   hrefs?: Record<string, string>;
+  labels?: Record<string, string>;
   className?: string;
 }) {
   if (!hrefs || Object.keys(hrefs).length === 0) {
@@ -46,16 +50,17 @@ export function AnswerWithCitationLinks({
       );
     }
     const href = hrefs[bestKey];
+    const label = labels?.[bestKey];
     parts.push(
       <a
         key={`a-${keyIndex++}`}
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-[#ED232A] underline underline-offset-2 font-mono text-[13px] font-semibold"
-        title="Open source PDF at this page"
+        className="text-[#C00000] underline underline-offset-2 text-[13px] font-semibold"
+        title={`Open source PDF at this page (${bestKey})`}
       >
-        [{bestKey}]
+        {label ? `[${label}]` : `[${bestKey}]`}
       </a>,
     );
     remaining = remaining.slice(bestPos + bestLen);

@@ -52,16 +52,16 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#8B1319] via-[#C11B22] to-[#ED232A] p-6">
-      <Card className="w-full max-w-md shadow-2xl border-[#C11B22]">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#C00000] via-[#C00000] to-[#C00000] p-6">
+      <Card className="w-full max-w-md shadow-2xl border-[#C00000]">
         <CardContent className="pt-8 pb-8 px-8">
           <div className="text-center mb-8">
             <div className="flex items-center justify-center mb-4">
-              <div className="w-16 h-16 rounded-full bg-[#ED232A] flex items-center justify-center">
+              <div className="w-16 h-16 rounded-full bg-[#C00000] flex items-center justify-center">
                 <TrendingUp className="w-9 h-9 text-white" />
               </div>
             </div>
-            <h1 className="text-3xl font-semibold text-[#8B1319] mb-2">
+            <h1 className="text-3xl font-semibold text-[#C00000] mb-2">
               Earnings Call Companion
             </h1>
             <p className="text-slate-600 text-sm">
@@ -81,7 +81,7 @@ export default function Login() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-[#8B1319] font-medium">
+              <Label htmlFor="username" className="text-[#C00000] font-medium">
                 Username
               </Label>
               <Input
@@ -93,7 +93,7 @@ export default function Login() {
                   setUsername(e.target.value);
                   setFormError(null);
                 }}
-                className="border-[#d4dce6] focus:border-[#ED232A] focus:ring-[#ED232A]"
+                className="border-[#d4dce6] focus:border-[#C00000] focus:ring-[#C00000]"
                 autoComplete="username"
                 disabled={submitting}
                 aria-invalid={!!formError}
@@ -101,7 +101,7 @@ export default function Login() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-[#8B1319] font-medium">
+              <Label htmlFor="password" className="text-[#C00000] font-medium">
                 Password
               </Label>
               <Input
@@ -113,7 +113,7 @@ export default function Login() {
                   setPassword(e.target.value);
                   setFormError(null);
                 }}
-                className="border-[#d4dce6] focus:border-[#ED232A] focus:ring-[#ED232A]"
+                className="border-[#d4dce6] focus:border-[#C00000] focus:ring-[#C00000]"
                 autoComplete="current-password"
                 disabled={submitting}
                 aria-invalid={!!formError}
@@ -123,7 +123,7 @@ export default function Login() {
             <Button
               type="submit"
               disabled={submitting}
-              className="w-full bg-[#ED232A] hover:bg-[#C11B22] text-white h-11 text-base font-medium mt-6"
+              className="w-full bg-[#C00000] hover:bg-[#C00000] text-white h-11 text-base font-medium mt-6"
             >
               {submitting ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -136,11 +136,11 @@ export default function Login() {
 
           <div className="mt-6 pt-6 border-t border-[#d4dce6]">
             <div className="flex items-start gap-2 text-xs text-slate-600">
-              <Lock className="w-3 h-3 text-[#ED232A] mt-0.5 flex-shrink-0" />
+              <Lock className="w-3 h-3 text-[#C00000] mt-0.5 flex-shrink-0" />
               <p>
                 Dev sign-in: use the credentials configured on the API (default{' '}
-                <code className="text-[#8B1319]">admin</code> /{' '}
-                <code className="text-[#8B1319]">admin</code>).
+                <code className="text-[#C00000]">admin</code> /{' '}
+                <code className="text-[#C00000]">admin</code>).
               </p>
             </div>
           </div>

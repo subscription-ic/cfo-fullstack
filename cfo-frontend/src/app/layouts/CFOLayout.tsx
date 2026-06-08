@@ -19,7 +19,7 @@ export default function CFOLayout() {
             {/* Logo and Company */}
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3">
-                <TrendingUp className="w-8 h-8 text-[#ED232A]" />
+                <TrendingUp className="w-8 h-8 text-[#C00000]" />
                 <div>
                   <h1 className="text-white text-xl font-semibold">Earnings Intelligence Copilot</h1>
                 </div>

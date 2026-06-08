@@ -17,6 +17,7 @@ import {
   CollapsibleTrigger,
 } from '../components/ui/collapsible';
 import {
+  fetchCompanies,
   fetchPredictedQuestions,
   fetchSimulatorSuggestedAnswer,
   type PredictedQA,
@@ -47,11 +48,13 @@ interface QuestionItem {
   ragSources?: {
     excerpt: string;
     label: string;
+    filename?: string | null;
     citation?: string;
     pdf_url?: string | null;
     page_number?: number;
   }[];
   citationHrefs?: Record<string, string>;
+  citationLabels?: Record<string, string>;
   ragLoading?: boolean;
   ragError?: string | null;
   ragFetched?: boolean;
@@ -102,26 +105,51 @@ export default function EarningsCallStrategist() {
   const [selectedCompany, setSelectedCompany] = useState('');
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('');
   const [selectedQuarter, setSelectedQuarter] = useState<string>('');
-
-  const companiesFromQuestions = useMemo(() => {
-    const s = new Set<string>();
-    for (const q of questions) {
-      if (q.company && !q.isCustom) s.add(q.company);
-    }
-    return Array.from(s).sort();
-  }, [questions]);
+  // Canonical company list — independent of the (filtered) questions stream.
+  const [allCompanies, setAllCompanies] = useState<string[]>([]);
+  // Unfiltered predictions used to populate the period dropdown; refreshed
+  // when the selected company changes so periods reflect that company only.
+  const [periodsCatalog, setPeriodsCatalog] = useState<PredictedQA[]>([]);
 
   useEffect(() => {
-    if (companiesFromQuestions.length === 1) {
-      setSelectedCompany(companiesFromQuestions[0]);
-    }
-  }, [companiesFromQuestions]);
+    let cancelled = false;
+    fetchCompanies()
+      .then((list) => {
+        if (cancelled) return;
+        setAllCompanies(list);
+        if (list.length === 1 && !selectedCompany) {
+          setSelectedCompany(list[0]);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Refresh the period catalog whenever the company filter changes. Uses NO
+  // period filter so all available quarters appear in the dropdown.
+  useEffect(() => {
+    let cancelled = false;
+    fetchPredictedQuestions(selectedCompany || undefined)
+      .then((data) => {
+        if (cancelled) return;
+        setPeriodsCatalog(data);
+      })
+      .catch(() => {
+        if (!cancelled) setPeriodsCatalog([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompany]);
 
   const topSourceSnippets = useMemo(() => {
     const seen = new Set<string>();
     const out: {
       key: string;
       citation?: string;
+      filename?: string | null;
       label: string;
       excerpt: string;
       pdf_url?: string | null;
@@ -139,6 +167,7 @@ export default function EarningsCallStrategist() {
         out.push({
           key,
           citation: s.citation,
+          filename: s.filename,
           label: s.label,
           excerpt: s.excerpt,
           pdf_url: s.pdf_url,
@@ -152,10 +181,9 @@ export default function EarningsCallStrategist() {
 
   const periodOptions = useMemo(() => {
     const set = new Set<string>();
-    for (const q of questions) {
-      if (q.isCustom) continue;
-      if (q.fiscalYear != null && q.quarter) {
-        set.add(`${q.fiscalYear}|${q.quarter}`);
+    for (const q of periodsCatalog) {
+      if (q.fiscal_year != null && q.quarter) {
+        set.add(`${q.fiscal_year}|${q.quarter}`);
       }
     }
     return Array.from(set)
@@ -168,7 +196,7 @@ export default function EarningsCallStrategist() {
           ? a.quarter.localeCompare(b.quarter)
           : b.fiscalYear - a.fiscalYear,
       );
-  }, [questions]);
+  }, [periodsCatalog]);
 
   const visibleQuestions = useMemo(() => {
     return questions.filter((q) => {
@@ -185,8 +213,11 @@ export default function EarningsCallStrategist() {
       try {
         setLoading(true);
         setError(null);
+        const fy = selectedFiscalYear ? Number(selectedFiscalYear) : undefined;
         const data = await fetchPredictedQuestions(
           selectedCompany || undefined,
+          fy,
+          selectedQuarter || undefined,
         );
         setQuestions(data.map(mapApiToQuestion));
       } catch (err: any) {
@@ -197,7 +228,7 @@ export default function EarningsCallStrategist() {
       }
     }
     load();
-  }, [selectedCompany]);
+  }, [selectedCompany, selectedFiscalYear, selectedQuarter]);
 
   const ensureRagAnswer = useCallback(
     async (item: QuestionItem) => {
@@ -218,6 +249,7 @@ export default function EarningsCallStrategist() {
         item.question,
         item.fiscalYear ?? null,
         item.quarter ?? null,
+        item.company ?? selectedCompany ?? null,
       );
         setQuestions((prev) =>
           prev.map((x) =>
@@ -226,14 +258,14 @@ export default function EarningsCallStrategist() {
                   ...x,
                   suggestedAnswer: res.answer,
                   citationHrefs: res.citation_hrefs,
+                  citationLabels: res.citation_labels,
                   ragSources: res.sources.map((s) => ({
                     excerpt: s.excerpt,
                     citation: s.citation,
+                    filename: s.filename,
                     pdf_url: s.pdf_url,
                     page_number: s.page_number,
-                    label: s.citation
-                      ? `${s.citation} — ${formatSourceLabel(s.metadata)}`
-                      : formatSourceLabel(s.metadata),
+                    label: formatSourceLabel(s.metadata),
                   })),
                   ragFetched: true,
                   ragLoading: false,
@@ -258,24 +290,11 @@ export default function EarningsCallStrategist() {
     [],
   );
 
-  const ragStateKey = useMemo(
-    () =>
-      questions
-        .map(
-          (q) =>
-            `${q.id}:${q.ragFetched ? 1 : 0}:${q.ragLoading ? 1 : 0}:${q.ragError ?? ''}`,
-        )
-        .join('|'),
-    [questions],
-  );
-
-  useEffect(() => {
-    if (loading) return;
-    const next = questions.find(
-      (q) => !q.ragFetched && !q.ragLoading && q.ragError == null,
-    );
-    if (next) void ensureRagAnswer(next);
-  }, [loading, ragStateKey, questions, ensureRagAnswer]);
+  // Note: RAG answers are fetched lazily — only when the user expands a
+  // question via handleQuestionOpenChange. Pre-fetching for every question on
+  // quarter change burned 2 LLM calls per question (rerank + synthesis) and
+  // made dropdown changes feel slow despite the answers never being visible
+  // until the user clicked.
 
   const handleQuestionOpenChange = (item: QuestionItem, open: boolean) => {
     setOpenQuestions((prev) => {
@@ -310,7 +329,7 @@ export default function EarningsCallStrategist() {
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
-      case 'high': return 'bg-[#E31837]/10 text-[#E31837] border-[#E31837]/20';
+      case 'high': return 'bg-[#C00000]/10 text-[#C00000] border-[#C00000]/20';
       case 'medium': return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'low': return 'bg-[#10b981]/10 text-[#10b981] border-[#10b981]/20';
       default: return 'bg-slate-100 text-slate-800';
@@ -369,16 +388,16 @@ export default function EarningsCallStrategist() {
           <title>Earnings Call Cheat Sheet</title>
           <style>
             body { font-family: Montserrat, sans-serif; padding: 40px; max-width: 1000px; margin: 0 auto; background: #f8fafc; }
-            h1 { color: #8B1319; border-bottom: 3px solid #ED232A; padding-bottom: 10px; margin-bottom: 30px; }
-            .meta { background: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #ED232A; }
+            h1 { color: #C00000; border-bottom: 3px solid #C00000; padding-bottom: 10px; margin-bottom: 30px; }
+            .meta { background: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #C00000; }
             .question { margin: 20px 0; padding: 25px; border: 1px solid #d4dce6; border-radius: 8px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-            .question h3 { color: #ED232A; margin-top: 0; font-size: 16px; }
+            .question h3 { color: #C00000; margin-top: 0; font-size: 16px; }
             .answer { background: #FFE8EA; padding: 18px; border-radius: 6px; margin-top: 15px; line-height: 1.6; }
             .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-right: 8px; }
-            .high { background: #E31837; color: white; }
+            .high { background: #C00000; color: white; }
             .medium { background: #fbbf24; color: #78350f; }
             .low { background: #10b981; color: white; }
-            .custom { background: #ED232A; color: white; }
+            .custom { background: #C00000; color: white; }
           </style>
         </head>
         <body>
@@ -429,7 +448,7 @@ export default function EarningsCallStrategist() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6 flex items-center justify-center">
         <div className="text-center space-y-4">
-          <Loader2 className="w-10 h-10 text-[#ED232A] animate-spin mx-auto" />
+          <Loader2 className="w-10 h-10 text-[#C00000] animate-spin mx-auto" />
           <p className="text-slate-600 font-medium">Loading questions from database…</p>
         </div>
       </div>
@@ -441,13 +460,13 @@ export default function EarningsCallStrategist() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6 flex items-center justify-center">
         <div className="text-center space-y-4 max-w-md">
-          <AlertCircle className="w-10 h-10 text-[#ED232A] mx-auto" />
-          <h2 className="text-xl font-semibold text-[#8B1319]">Failed to load questions</h2>
+          <AlertCircle className="w-10 h-10 text-[#C00000] mx-auto" />
+          <h2 className="text-xl font-semibold text-[#C00000]">Failed to load questions</h2>
           <p className="text-slate-600 text-sm">{error}</p>
           <p className="text-slate-500 text-xs">Make sure the FastAPI backend is running on port 8000.</p>
           <Button
             onClick={() => window.location.reload()}
-            className="bg-[#ED232A] hover:bg-[#C11B22] text-white"
+            className="bg-[#C00000] hover:bg-[#C00000] text-white"
           >
             Retry
           </Button>
@@ -467,20 +486,20 @@ export default function EarningsCallStrategist() {
             <Button 
               variant="ghost" 
               onClick={() => navigate('/dashboard')}
-              className="mb-3 text-[#ED232A] hover:text-[#C11B22] hover:bg-[#FFE8EA]"
+              className="mb-3 text-[#C00000] hover:text-[#C00000] hover:bg-[#FFE8EA]"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Dashboard
             </Button>
-            <h1 className="text-3xl font-semibold text-[#8B1319] mb-2">Earnings Call Simulator</h1>
+            <h1 className="text-3xl font-semibold text-[#C00000] mb-2">Earnings Call Simulator</h1>
             <p className="text-slate-600">Prepare for tough questions with AI-predicted scenarios</p>
             {questions.some((q) => q.ragLoading) && (
-              <p className="text-sm text-[#ED232A] mt-2 flex items-center gap-2">
+              <p className="text-sm text-[#C00000] mt-2 flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                 Grounding CFO-style answers from uploaded documents (hybrid search + rerank)…
               </p>
             )}
-            {companiesFromQuestions.length > 0 && (
+            {allCompanies.length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <span className="text-sm font-medium text-slate-700">
                   Filter list by company:
@@ -491,12 +510,12 @@ export default function EarningsCallStrategist() {
                     setSelectedCompany(v === '__all__' ? '' : v)
                   }
                 >
-                  <SelectTrigger className="w-[240px] border-[#ED232A]/40">
+                  <SelectTrigger className="w-[240px] border-[#C00000]/40">
                     <SelectValue placeholder="All companies" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">All companies</SelectItem>
-                    {companiesFromQuestions.map((c) => (
+                    {allCompanies.map((c) => (
                       <SelectItem key={c} value={c}>
                         {c}
                       </SelectItem>
@@ -523,7 +542,7 @@ export default function EarningsCallStrategist() {
                         }
                       }}
                     >
-                      <SelectTrigger className="w-[200px] border-[#ED232A]/40">
+                      <SelectTrigger className="w-[200px] border-[#C00000]/40">
                         <SelectValue placeholder="All periods" />
                       </SelectTrigger>
                       <SelectContent>
@@ -687,9 +706,9 @@ export default function EarningsCallStrategist() {
 
           <div className="grid lg:grid-cols-3 gap-6">
           {/* Left: Predicted Questions List */}
-          <Card className="lg:col-span-2 border-[#ED232A]/30 shadow-lg">
+          <Card className="lg:col-span-2 border-[#C00000]/30 shadow-lg">
             <CardHeader className="bg-gradient-to-r from-[#FFE8EA] to-white border-b border-[#d4dce6]">
-              <CardTitle className="text-[#8B1319] text-xl">
+              <CardTitle className="text-[#C00000] text-xl">
                 AI-Predicted Questions
               </CardTitle>
               <p className="text-sm text-slate-600 mt-2">
@@ -698,18 +717,18 @@ export default function EarningsCallStrategist() {
               
               {/* Add Custom Question Input */}
               <div className="mt-4 space-y-2">
-                <div className="text-sm font-medium text-[#8B1319]">Add Custom Question</div>
+                <div className="text-sm font-medium text-[#C00000]">Add Custom Question</div>
                 <div className="flex gap-2">
                   <Input
                     value={newCustomQuestion}
                     onChange={(e) => setNewCustomQuestion(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddCustomQuestion()}
                     placeholder="Type your custom question here..."
-                    className="flex-1 border-[#ED232A]/50 focus:border-[#ED232A]"
+                    className="flex-1 border-[#C00000]/50 focus:border-[#C00000]"
                   />
                   <Button 
                     onClick={handleAddCustomQuestion}
-                    className="bg-[#ED232A] hover:bg-[#C11B22] text-white"
+                    className="bg-[#C00000] hover:bg-[#C00000] text-white"
                     size="sm"
                   >
                     <Plus className="w-4 h-4" />
@@ -732,7 +751,7 @@ export default function EarningsCallStrategist() {
                         q.status === 'retained' 
                           ? 'border-[#10b981] bg-[#10b981]/5' 
                           : q.status === 'rejected'
-                          ? 'border-[#E31837]/30 bg-[#E31837]/5 opacity-60'
+                          ? 'border-[#C00000]/30 bg-[#C00000]/5 opacity-60'
                           : 'border-[#d4dce6] bg-white'
                       }`}
                     >
@@ -741,15 +760,15 @@ export default function EarningsCallStrategist() {
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="outline" className="text-xs font-semibold text-[#ED232A] border-[#ED232A] bg-white">
+                              <Badge variant="outline" className="text-xs font-semibold text-[#C00000] border-[#C00000]">
                                 Q{idx + 1}
                               </Badge>
                               {q.categoryL1 ? (
-                                <Badge variant="outline" className="text-xs border-[#ED232A] text-[#ED232A]">
+                                <Badge variant="outline" className="text-xs border-[#C00000] text-[#C00000]">
                                   {q.categoryL1}
                                 </Badge>
                               ) : (
-                                <Badge variant="outline" className="text-xs border-[#ED232A] text-[#ED232A]">
+                                <Badge variant="outline" className="text-xs border-[#C00000] text-[#C00000]">
                                   {q.category}
                                 </Badge>
                               )}
@@ -762,12 +781,12 @@ export default function EarningsCallStrategist() {
                                 {q.riskLevel}
                               </Badge>
                               {q.isCustom && (
-                                <Badge className="text-xs bg-[#ED232A] text-white">
+                                <Badge className="text-xs bg-[#C00000] text-white">
                                   Custom
                                 </Badge>
                               )}
                             </div>
-                            <div className="font-medium text-[#8B1319] text-sm leading-relaxed">
+                            <div className="font-medium text-[#C00000] text-sm leading-relaxed">
                               {q.question}
                             </div>
                             {q.ragLoading && (
@@ -800,8 +819,8 @@ export default function EarningsCallStrategist() {
                             disabled={q.status === 'rejected'}
                             className={`flex-1 ${
                               q.status === 'rejected'
-                                ? 'bg-[#E31837] hover:bg-[#E31837]'
-                                : 'bg-[#E31837]/10 text-[#E31837] hover:bg-[#E31837] hover:text-white'
+                                ? 'bg-[#C00000] hover:bg-[#C00000]'
+                                : 'bg-[#C00000]/10 text-[#C00000] hover:bg-[#C00000] hover:text-white'
                             }`}
                           >
                             <X className="w-4 h-4 mr-1.5" />
@@ -817,13 +836,13 @@ export default function EarningsCallStrategist() {
                           <CollapsibleTrigger
                             className="w-full flex items-center justify-between p-3 bg-[#FFE8EA]/50 hover:bg-[#FFE8EA] rounded-lg transition-colors"
                           >
-                            <span className="text-sm font-medium text-[#ED232A]">
+                            <span className="text-sm font-medium text-[#C00000]">
                               View suggested answer (from uploaded documents)
                             </span>
                             {openQuestions.includes(q.id) ? (
-                              <ChevronUp className="w-4 h-4 text-[#ED232A]" />
+                              <ChevronUp className="w-4 h-4 text-[#C00000]" />
                             ) : (
-                              <ChevronDown className="w-4 h-4 text-[#ED232A]" />
+                              <ChevronDown className="w-4 h-4 text-[#C00000]" />
                             )}
                           </CollapsibleTrigger>
                           <CollapsibleContent className="mt-3">
@@ -844,13 +863,14 @@ export default function EarningsCallStrategist() {
                               )}
                               {!q.ragLoading && (
                                 <>
-                                  <div className="text-sm font-medium text-[#ED232A]">
+                                  <div className="text-sm font-medium text-[#C00000]">
                                     Suggested answer
                                   </div>
                                   <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
                                     <AnswerWithCitationLinks
                                       text={q.suggestedAnswer}
                                       hrefs={q.citationHrefs}
+                                      labels={q.citationLabels}
                                     />
                                   </div>
                                   {q.ragFetched && q.retrievalMode && (
@@ -877,23 +897,26 @@ export default function EarningsCallStrategist() {
                                                 href={s.pdf_url}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="font-mono text-xs font-semibold text-[#ED232A] hover:underline"
+                                                className="text-xs font-semibold text-[#C00000] hover:underline"
                                               >
-                                                {s.citation ?? s.label.split(' — ')[0]}
+                                                {s.filename ?? s.label}
                                                 {s.page_number != null
                                                   ? ` · page ${s.page_number}`
                                                   : ''}{' '}
                                                 (open PDF)
                                               </a>
                                             ) : (
-                                              <span className="font-mono text-xs font-semibold text-slate-800">
-                                                {s.citation ?? s.label.split(' — ')[0]}
+                                              <span className="text-xs font-semibold text-slate-800">
+                                                {s.filename ?? s.label}
+                                                {s.page_number != null
+                                                  ? ` · page ${s.page_number}`
+                                                  : ''}
                                               </span>
                                             )}
                                           </div>
-                                          {s.label.includes(' — ') && (
+                                          {s.filename && s.label && s.label !== s.filename && (
                                             <div className="text-[11px] text-slate-500 mb-1">
-                                              {s.label.split(' — ').slice(1).join(' — ')}
+                                              {s.label}
                                             </div>
                                           )}
                                           <div className="text-slate-600 leading-relaxed">
@@ -917,8 +940,8 @@ export default function EarningsCallStrategist() {
           </Card>
 
           {/* Right: Cheat Sheet Preview */}
-          <Card className="lg:col-span-1 border-[#ED232A]/30 shadow-lg h-fit sticky top-6">
-            <CardHeader className="bg-gradient-to-r from-[#ED232A] to-[#C11B22] text-white">
+          <Card className="lg:col-span-1 border-[#C00000]/30 shadow-lg h-fit sticky top-6">
+            <CardHeader className="bg-gradient-to-r from-[#C00000] to-[#C00000] text-white">
               <CardTitle className="text-xl flex items-center gap-2">
                 <FileText className="w-5 h-5" />
                 Prep Cheat Sheet
@@ -929,11 +952,11 @@ export default function EarningsCallStrategist() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-[#FFE8EA] rounded-lg">
                   <div className="text-xs text-slate-600">Questions</div>
-                  <div className="text-2xl font-semibold text-[#ED232A]">{retainedCount}</div>
+                  <div className="text-2xl font-semibold text-[#C00000]">{retainedCount}</div>
                 </div>
                 <div className="p-3 bg-[#FFE8EA] rounded-lg">
                   <div className="text-xs text-slate-600">Custom</div>
-                  <div className="text-2xl font-semibold text-[#ED232A]">
+                  <div className="text-2xl font-semibold text-[#C00000]">
                     {retainedQuestions.filter(q => q.isCustom).length}
                   </div>
                 </div>
@@ -941,7 +964,7 @@ export default function EarningsCallStrategist() {
 
               {/* Retained Questions List */}
               <div>
-                <div className="text-sm font-medium text-[#8B1319] mb-3">Retained Questions:</div>
+                <div className="text-sm font-medium text-[#C00000] mb-3">Retained Questions:</div>
                 {retainedCount === 0 ? (
                   <div className="text-center py-8 text-slate-500 text-sm">
                     No questions retained yet. Click "Retain" on questions above to add them to your cheat sheet.
@@ -950,17 +973,17 @@ export default function EarningsCallStrategist() {
                   <ScrollArea className="h-[400px]">
                     <div className="space-y-2">
                       {retainedQuestions.map((q, idx) => (
-                        <div key={q.id} className="p-3 bg-[#FFE8EA] rounded-lg border border-[#ED232A]/20">
+                        <div key={q.id} className="p-3 bg-[#FFE8EA] rounded-lg border border-[#C00000]/20">
                           <div className="flex items-start gap-2">
-                            <div className="text-xs font-semibold text-[#ED232A] mt-0.5">
+                            <div className="text-xs font-semibold text-[#C00000] mt-0.5">
                               {idx + 1}.
                             </div>
                             <div className="flex-1">
-                              <div className="text-xs text-[#8B1319] leading-relaxed">
+                              <div className="text-xs text-[#C00000] leading-relaxed">
                                 {q.question}
                               </div>
                               {q.isCustom && (
-                                <Badge className="text-xs bg-[#ED232A] text-white mt-1.5">
+                                <Badge className="text-xs bg-[#C00000] text-white mt-1.5">
                                   Custom
                                 </Badge>
                               )}
@@ -977,7 +1000,7 @@ export default function EarningsCallStrategist() {
               <Button 
                 onClick={handleDownloadCheatSheet}
                 disabled={retainedCount === 0}
-                className="w-full bg-[#ED232A] hover:bg-[#C11B22] text-white disabled:opacity-50"
+                className="w-full bg-[#C00000] hover:bg-[#C00000] text-white disabled:opacity-50"
               >
                 <FileText className="w-4 h-4 mr-2" />
                 Download Cheat Sheet ({retainedCount})
@@ -991,9 +1014,9 @@ export default function EarningsCallStrategist() {
           </Card>
 
           {/* Top source snippets — aggregated across visible questions */}
-          <Card className="lg:col-span-1 border-[#ED232A]/30 shadow-lg h-fit">
+          <Card className="lg:col-span-1 border-[#C00000]/30 shadow-lg h-fit">
             <CardHeader className="bg-gradient-to-r from-[#FFE8EA] to-white border-b border-[#d4dce6]">
-              <CardTitle className="text-[#8B1319] text-lg flex items-center gap-2">
+              <CardTitle className="text-[#C00000] text-lg flex items-center gap-2">
                 <FileText className="w-4 h-4" />
                 Top source snippets
               </CardTitle>
@@ -1020,7 +1043,7 @@ export default function EarningsCallStrategist() {
                         className="text-xs bg-slate-50 rounded p-2 border border-slate-100"
                       >
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="text-[10px] font-semibold text-[#ED232A]">
+                          <span className="text-[10px] font-semibold text-[#C00000]">
                             #{idx + 1}
                           </span>
                           {s.pdf_url ? (
@@ -1028,22 +1051,25 @@ export default function EarningsCallStrategist() {
                               href={s.pdf_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="font-mono text-xs font-semibold text-[#ED232A] hover:underline"
+                              className="text-xs font-semibold text-[#C00000] hover:underline"
                             >
-                              {s.citation ?? s.label.split(' — ')[0]}
+                              {s.filename ?? s.label}
                               {s.page_number != null
                                 ? ` · p${s.page_number}`
                                 : ''}
                             </a>
                           ) : (
-                            <span className="font-mono text-xs font-semibold text-slate-800">
-                              {s.citation ?? s.label.split(' — ')[0]}
+                            <span className="text-xs font-semibold text-slate-800">
+                              {s.filename ?? s.label}
+                              {s.page_number != null
+                                ? ` · p${s.page_number}`
+                                : ''}
                             </span>
                           )}
                         </div>
-                        {s.label.includes(' — ') && (
+                        {s.filename && s.label && s.label !== s.filename && (
                           <div className="text-[11px] text-slate-500 mb-1">
-                            {s.label.split(' — ').slice(1).join(' — ')}
+                            {s.label}
                           </div>
                         )}
                         <div className="text-slate-600 leading-relaxed line-clamp-4">

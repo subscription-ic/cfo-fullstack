@@ -16,7 +16,7 @@ export default function AdminLayout() {
             {/* Logo and Company */}
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3">
-                <TrendingUp className="w-8 h-8 text-[#ED232A]" />
+                <TrendingUp className="w-8 h-8 text-[#C00000]" />
                 <div>
                   <h1 className="text-white text-xl font-semibold">Earnings Intelligence Copilot</h1>
                 </div>
@@ -25,9 +25,9 @@ export default function AdminLayout() {
 
             {/* Navigation */}
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#E31837]/10 border border-[#E31837]/20">
-                <Shield className="w-4 h-4 text-[#E31837]" />
-                <span className="text-[#E31837] text-sm font-medium">Admin Access</span>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#C00000]/10 border border-[#C00000]/20">
+                <Shield className="w-4 h-4 text-[#C00000]" />
+                <span className="text-[#C00000] text-sm font-medium">Admin Access</span>
               </div>
               <Button
                 variant="ghost"

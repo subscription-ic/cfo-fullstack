@@ -16,7 +16,8 @@ from app.infrastructure.llm import chat_completion, embed_query, get_openai_clie
 from app.shared.constants import (
     EXPERT_PERSONA,
     INDUSTRY_AWARE_DIRECTIVE,
-    TRANSCRIPT_DOC_TYPES,
+    QA_EXCLUDED_DOC_TYPES,
+    QA_EXCLUDED_SOURCE_CATEGORIES,
 )
 
 RRF_K = 60
@@ -128,11 +129,15 @@ def _signed_url_open_document(
 
 def _enrich_sources_pdf_links(
     supabase: Client, sources: list[dict[str, Any]]
-) -> dict[str, str]:
-    """Add pdf_url / page_number to each source; return map citation_id -> url for inline links."""
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Add pdf_url / page_number / filename to each source. Returns
+    (hrefs, labels): hrefs maps citation_id -> signed PDF URL for inline links;
+    labels maps citation_id -> "<original filename> (p.<page>)" so the UI can
+    show the real file name instead of the citation hashcode."""
     doc_ids = {str(s["document_id"]) for s in sources if s.get("document_id")}
     doc_rows = _batch_document_storage(supabase, doc_ids)
     hrefs: dict[str, str] = {}
+    labels: dict[str, str] = {}
 
     for s in sources:
         meta = s.get("metadata") or {}
@@ -146,6 +151,15 @@ def _enrich_sources_pdf_links(
         page = _page_from_meta(meta, citation)
         s["page_number"] = page
 
+        # Expose the original file name on the source and as a citation label
+        # (falls back to the citation id when no filename is known).
+        display_name = Path(str(filename)).name if filename else ""
+        s["filename"] = display_name or None
+        if citation and citation not in labels:
+            labels[citation] = (
+                f"{display_name} (p.{page})" if display_name else citation
+            )
+
         if not bucket or not path:
             s["pdf_url"] = None
             continue
@@ -157,7 +171,7 @@ def _enrich_sources_pdf_links(
         if url and citation and citation not in hrefs:
             hrefs[citation] = url
 
-    return hrefs
+    return hrefs, labels
 
 
 def _reciprocal_rank_fusion(
@@ -202,14 +216,16 @@ def _reciprocal_rank_fusion(
     return out
 
 
-def _lexical_search_safe(supabase: Client, question: str) -> list[dict[str, Any]]:
-    """Full-text leg; no company/doc filters (hybrid over all uploaded chunks)."""
+def _lexical_search_safe(
+    supabase: Client, question: str, company: str | None = None,
+) -> list[dict[str, Any]]:
+    """Full-text leg; constrained to the selected company when provided."""
     try:
         res = supabase.rpc(
             "match_document_chunks_lexical",
             {
                 "query_text": question[:4000],
-                "filter_company": "",
+                "filter_company": (company or "").strip(),
                 "match_count": LEXICAL_K,
             },
         ).execute()
@@ -219,8 +235,10 @@ def _lexical_search_safe(supabase: Client, question: str) -> list[dict[str, Any]
         return []
 
 
-def _dense_search(supabase: Client, question: str) -> list[dict[str, Any]]:
-    """Vector leg; no company/doc filters (hybrid over all uploaded chunks)."""
+def _dense_search(
+    supabase: Client, question: str, company: str | None = None,
+) -> list[dict[str, Any]]:
+    """Vector leg; constrained to the selected company when provided."""
     if get_openai_client() is None:
         return []
     try:
@@ -229,7 +247,7 @@ def _dense_search(supabase: Client, question: str) -> list[dict[str, Any]]:
             "match_document_chunks",
             {
                 "query_embedding": vec,
-                "filter_company": "",
+                "filter_company": (company or "").strip(),
                 "filter_doc_type": None,
                 "filter_source_category": None,
                 "match_count": DENSE_K,
@@ -313,10 +331,39 @@ def _synthesize(question: str, chunks: list[dict[str, Any]]) -> str:
             seen_cit.add(cit)
             legend_lines.append(_citation_legend_line(meta, cit))
         label = f"{meta.get('document_type', '')}/{meta.get('quarter', '')} FY{meta.get('fiscal_year', '')}"
+        # Hierarchical headings give the LLM context for where in the document
+        # this excerpt sits — improves both relevance interpretation and the
+        # downstream answer's specificity.
+        l1 = ch.get("l1_heading") or meta.get("l1_heading") or ""
+        l2 = ch.get("l2_headings") or meta.get("l2_headings") or []
+        l3 = ch.get("l3_headings") or meta.get("l3_headings") or []
+        heading_lines = []
+        if l1:
+            heading_lines.append(f"Section (L1): {l1}")
+        if isinstance(l2, list) and l2:
+            heading_lines.append(f"Sub-sections (L2): {' › '.join(str(x) for x in l2[:4])}")
+        if isinstance(l3, list) and l3:
+            heading_lines.append(f"Detail (L3): {' › '.join(str(x) for x in l3[:6])}")
+        # Pre-extracted analyst signals from summarization.analyze_page —
+        # surfaced so the answering CFO persona can reference specific numbers
+        # / named events instead of paraphrasing the excerpt at a generic level.
+        qa = meta.get("quant_anchors") or []
+        ne = meta.get("named_entities") or []
+        ce = meta.get("catalyst_events") or []
+        fs = meta.get("forward_statements") or []
+        if isinstance(qa, list) and qa:
+            heading_lines.append("Quant anchors: " + " | ".join(str(x) for x in qa[:6]))
+        if isinstance(ne, list) and ne:
+            heading_lines.append("Named entities: " + " | ".join(str(x) for x in ne[:6]))
+        if isinstance(ce, list) and ce:
+            heading_lines.append("Catalyst events: " + " | ".join(str(x) for x in ce[:4]))
+        if isinstance(fs, list) and fs:
+            heading_lines.append("Forward statements: " + " | ".join(str(x) for x in fs[:4]))
+        headings_block = ("\n".join(heading_lines) + "\n") if heading_lines else ""
         body = (ch.get("content") or "")[:1400]
         ctx_blocks.append(
             f"--- Excerpt {i} ---\nCitation ID (use exactly in brackets in your answer): [{cit}]\n"
-            f"Context: {label.strip('/')}\nText:\n{body}"
+            f"Context: {label.strip('/')}\n{headings_block}Text:\n{body}"
         )
 
     ctx = "\n\n".join(ctx_blocks)
@@ -376,21 +423,26 @@ def _answer_from_excerpts_only(chunks: list[dict[str, Any]]) -> str:
     )
 
 
-def _is_current_quarter_transcript(
-    chunk: dict[str, Any],
-    fiscal_year: int | None,
-    quarter: str | None,
+def _is_excluded_chunk(chunk: dict[str, Any]) -> bool:
+    """True for any chunk the simulator must never source its answer from:
+    earnings-call transcripts (the very class of document the analyst question
+    came from) and third-party research reports. Checked on both document_type
+    and source_category so legacy chunks with a blank document_type are caught."""
+    meta = chunk.get("metadata") or {}
+    doc_type = str(meta.get("document_type") or "").strip()
+    source_category = str(meta.get("source_category") or "").strip()
+    return (
+        doc_type in QA_EXCLUDED_DOC_TYPES
+        or source_category in QA_EXCLUDED_SOURCE_CATEGORIES
+    )
+
+
+def _chunk_matches_period(
+    chunk: dict[str, Any], fiscal_year: int | None, quarter: str | None,
 ) -> bool:
-    """The simulator must NEVER answer the current quarter from its own transcript —
-    that would be the analyst question itself. Transcripts from prior quarters are fine,
-    and any non-transcript document for the current quarter (filings, press releases,
-    investor decks, financial statements) is fine too."""
     if fiscal_year is None or not quarter:
         return False
     meta = chunk.get("metadata") or {}
-    doc_type = str(meta.get("document_type") or "").strip()
-    if doc_type not in TRANSCRIPT_DOC_TYPES:
-        return False
     try:
         fy = int(meta.get("fiscal_year")) if meta.get("fiscal_year") is not None else None
     except (TypeError, ValueError):
@@ -406,22 +458,31 @@ def build_suggested_answer_from_uploads(
     fiscal_year: int | None = None,
     quarter: str | None = None,
 ) -> dict[str, Any]:
-    """Hybrid RAG over all chunks. When fiscal_year+quarter are provided, the same
-    quarter's earnings transcript is excluded so the simulator never answers a
-    question with the very transcript it came from. Historical transcripts and
-    current-quarter non-transcript filings remain in scope."""
-    _ = company
+    """Hybrid RAG over all chunks. The selected company scopes the retrieval.
+    Earnings-call transcript chunks (any quarter) and third-party research
+    reports are excluded so the simulator grounds its answer in filings, press
+    releases, presentations, annual reports, and guidance only. When
+    fiscal_year+quarter are provided we
+    prefer chunks from that exact period and only fall back to other periods
+    when the period-specific pool is too small."""
     q = (question or "").strip()
 
-    dense = _dense_search(supabase, q)
-    lexical = _lexical_search_safe(supabase, q)
+    dense = _dense_search(supabase, q, company)
+    lexical = _lexical_search_safe(supabase, q, company)
     fused = _reciprocal_rank_fusion(dense, lexical)
 
+    fused = [ch for ch in fused if not _is_excluded_chunk(ch)]
+
+    # Period preference: when a target quarter is set, prioritize chunks from
+    # that exact period. Reorder fused so period matches come first while
+    # preserving relative ordering within each bucket. If we don't have enough
+    # period-specific chunks to fill the top-N, the off-period chunks come
+    # after as fallback rather than being dropped entirely.
     if fiscal_year is not None and quarter:
-        fused = [
-            ch for ch in fused
-            if not _is_current_quarter_transcript(ch, fiscal_year, quarter)
-        ]
+        period_chunks = [ch for ch in fused if _chunk_matches_period(ch, fiscal_year, quarter)]
+        other_chunks = [ch for ch in fused if not _chunk_matches_period(ch, fiscal_year, quarter)]
+        if period_chunks:
+            fused = period_chunks + other_chunks
 
     top_rrf = fused[:RRF_TOP_N]
 
@@ -462,11 +523,12 @@ def build_suggested_answer_from_uploads(
             }
         )
 
-    citation_hrefs = _enrich_sources_pdf_links(supabase, sources)
+    citation_hrefs, citation_labels = _enrich_sources_pdf_links(supabase, sources)
 
     return {
         "answer": answer,
         "sources": sources,
         "citation_hrefs": citation_hrefs,
+        "citation_labels": citation_labels,
         "retrieval_mode": mode,
     }

@@ -78,7 +78,7 @@ const SIGNAL_ICONS: Record<string, typeof AlertTriangle> = {
   forward_looking: Eye,
 };
 
-const TOPIC_COLORS = ["#ED232A", "#DC2626", "#B91C1C", "#991B1B", "#7F1D1D"];
+const TOPIC_COLORS = ["#C00000", "#C00000", "#C00000", "#C00000", "#C00000"];
 
 export default function HistoricalIntelligenceHub() {
   const navigate = useNavigate();
@@ -94,6 +94,12 @@ export default function HistoricalIntelligenceHub() {
   // Quarters
   const [quarters, setQuarters] = useState<QuarterSummaryInfo[]>([]);
   const [selectedQuarterKey, setSelectedQuarterKey] = useState("");
+  // Committed selection: only set when the user clicks Apply. Everything below
+  // the control bar is gated on `applied`, and parsedQuarter derives from
+  // appliedQuarterKey so the rendered sections never reflect a half-changed
+  // dropdown that hasn't been applied yet.
+  const [appliedQuarterKey, setAppliedQuarterKey] = useState("");
+  const [applied, setApplied] = useState(false);
 
   // Quarter detail
   const [quarterDetail, setQuarterDetail] = useState<QuarterDetailResponse | null>(null);
@@ -126,26 +132,44 @@ export default function HistoricalIntelligenceHub() {
       .catch(() => {});
   }, []);
 
-  // When company changes, load topics + quarters
+  // When company changes, only refresh the Quarter dropdown options and clear
+  // any previously-applied results. Key Topics / quarter detail / documents are
+  // loaded on Apply, not here, so nothing below the control bar shows until the
+  // user picks a company + quarter and clicks Apply.
   useEffect(() => {
+    setApplied(false);
+    setAppliedQuarterKey("");
+    setSelectedQuarterKey("");
+    setTopics([]);
+    setQuarterDetail(null);
+    setAiSummary("");
+    setDocumentsCatalog([]);
+
     if (!selectedCompany) {
-      setTopics([]);
       setQuarters([]);
-      setQuarterDetail(null);
-      setAiSummary("");
-      setSelectedQuarterKey("");
       return;
     }
+
+    fetchAvailableQuarters(selectedCompany)
+      .then((resp) => setQuarters(resp.quarters))
+      .catch(() => setQuarters([]));
+  }, [selectedCompany]);
+
+  // Apply: commit the company + quarter and load everything for that combo.
+  const handleApply = useCallback(async () => {
+    if (!selectedCompany || !selectedQuarterKey) return;
+    const [q, fyStr] = selectedQuarterKey.split("|");
+    const fy = parseInt(fyStr, 10);
+
+    setAppliedQuarterKey(selectedQuarterKey);
+    setApplied(true);
+    setAiSummary("");
 
     setTopicsLoading(true);
     fetchKeyTopics(selectedCompany, 4)
       .then((resp) => setTopics(resp.topics))
       .catch(() => setTopics([]))
       .finally(() => setTopicsLoading(false));
-
-    fetchAvailableQuarters(selectedCompany)
-      .then((resp) => setQuarters(resp.quarters))
-      .catch(() => setQuarters([]));
 
     const token = getAccessToken();
     if (token) {
@@ -156,41 +180,22 @@ export default function HistoricalIntelligenceHub() {
       setDocumentsCatalog([]);
     }
 
-    // Reset quarter selection
-    setSelectedQuarterKey("");
-    setQuarterDetail(null);
-    setAiSummary("");
-  }, [selectedCompany]);
-
-  // When quarter changes, load detail
-  const handleQuarterSelect = useCallback(
-    async (key: string) => {
-      setSelectedQuarterKey(key);
-      setAiSummary("");
-      if (!key || !selectedCompany) {
-        setQuarterDetail(null);
-        return;
-      }
-      const [q, fyStr] = key.split("|");
-      const fy = parseInt(fyStr, 10);
-      setDetailLoading(true);
-      try {
-        const detail = await fetchQuarterDetail(selectedCompany, fy, q);
-        setQuarterDetail(detail);
-      } catch {
-        toast.error("Failed to load quarter details");
-        setQuarterDetail(null);
-      } finally {
-        setDetailLoading(false);
-      }
-    },
-    [selectedCompany],
-  );
+    setDetailLoading(true);
+    try {
+      const detail = await fetchQuarterDetail(selectedCompany, fy, q);
+      setQuarterDetail(detail);
+    } catch {
+      toast.error("Failed to load quarter details");
+      setQuarterDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [selectedCompany, selectedQuarterKey]);
 
   // Generate AI summary
   const handleGenerateSummary = useCallback(async () => {
-    if (!selectedQuarterKey || !selectedCompany) return;
-    const [q, fyStr] = selectedQuarterKey.split("|");
+    if (!appliedQuarterKey || !selectedCompany) return;
+    const [q, fyStr] = appliedQuarterKey.split("|");
     const fy = parseInt(fyStr, 10);
     setSummaryLoading(true);
     toast.loading("Generating AI Summary...", { id: "ai-summary" });
@@ -203,12 +208,12 @@ export default function HistoricalIntelligenceHub() {
     } finally {
       setSummaryLoading(false);
     }
-  }, [selectedQuarterKey, selectedCompany]);
+  }, [appliedQuarterKey, selectedCompany]);
 
   // Download summary as HTML
   const handleDownloadSummary = useCallback(() => {
     if (!aiSummary || !quarterDetail) return;
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>AI Summary - ${quarterDetail.company} ${quarterDetail.quarter} FY${quarterDetail.fiscal_year}</title><style>body{font-family:system-ui;max-width:800px;margin:40px auto;padding:0 20px;color:#333}h1{color:#002850}h2{color:#ED232A;border-bottom:2px solid #ED232A;padding-bottom:8px}</style></head><body><h1>${quarterDetail.company} — ${quarterDetail.quarter} FY${quarterDetail.fiscal_year}</h1><h2>AI-Generated Summary</h2>${aiSummary.split("\n").map((p) => `<p>${p}</p>`).join("")}</body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>AI Summary - ${quarterDetail.company} ${quarterDetail.quarter} FY${quarterDetail.fiscal_year}</title><style>body{font-family:system-ui;max-width:800px;margin:40px auto;padding:0 20px;color:#333}h1{color:#002850}h2{color:#C00000;border-bottom:2px solid #C00000;padding-bottom:8px}</style></head><body><h1>${quarterDetail.company} — ${quarterDetail.quarter} FY${quarterDetail.fiscal_year}</h1><h2>AI-Generated Summary</h2>${aiSummary.split("\n").map((p) => `<p>${p}</p>`).join("")}</body></html>`;
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -241,7 +246,7 @@ export default function HistoricalIntelligenceHub() {
         content: m.text,
       }));
 
-    const [q, fyStr] = selectedQuarterKey ? selectedQuarterKey.split("|") : [undefined, undefined];
+    const [q, fyStr] = appliedQuarterKey ? appliedQuarterKey.split("|") : [undefined, undefined];
     const fy = fyStr ? parseInt(fyStr, 10) : undefined;
 
     try {
@@ -264,10 +269,10 @@ export default function HistoricalIntelligenceHub() {
     } finally {
       setChatLoading(false);
     }
-  }, [chatInput, chatMessages, selectedCompany, selectedQuarterKey]);
+  }, [chatInput, chatMessages, selectedCompany, appliedQuarterKey]);
 
-  const parsedQuarter = selectedQuarterKey
-    ? { quarter: selectedQuarterKey.split("|")[0], fiscal_year: parseInt(selectedQuarterKey.split("|")[1], 10) }
+  const parsedQuarter = appliedQuarterKey
+    ? { quarter: appliedQuarterKey.split("|")[0], fiscal_year: parseInt(appliedQuarterKey.split("|")[1], 10) }
     : null;
 
   const quarterDocuments = parsedQuarter
@@ -336,7 +341,7 @@ export default function HistoricalIntelligenceHub() {
             <Button
               variant="ghost"
               onClick={() => navigate("/dashboard")}
-              className="mb-3 text-[#ED232A] hover:text-[#B91C1C] hover:bg-[#FEE2E2]"
+              className="mb-3 text-[#C00000] hover:text-[#C00000] hover:bg-[#FEE2E2]"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Dashboard
@@ -350,56 +355,95 @@ export default function HistoricalIntelligenceHub() {
           </div>
         </div>
 
-        {/* Company Selector */}
-        <Card className="border-[#ED232A]/30 shadow-sm">
+        {/* Company + Quarter selectors + Apply */}
+        <Card className="border-[#C00000]/30 shadow-sm">
           <CardContent className="p-4">
-            <div className="flex items-center gap-4">
-              <span className="font-medium text-slate-700">Company:</span>
-              <Select value={selectedCompany} onValueChange={setSelectedCompany}>
-                <SelectTrigger className="w-64 border-[#ED232A]">
-                  <SelectValue placeholder="Select a company..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {companies.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-slate-700">Company:</span>
+                <Select value={selectedCompany} onValueChange={setSelectedCompany}>
+                  <SelectTrigger className="w-64 border-[#C00000]">
+                    <SelectValue placeholder="Select a company..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-slate-700">Quarter:</span>
+                <Select
+                  value={selectedQuarterKey}
+                  onValueChange={setSelectedQuarterKey}
+                  disabled={!selectedCompany || quarters.length === 0}
+                >
+                  <SelectTrigger className="w-56 border-[#C00000]">
+                    <SelectValue placeholder="Select a quarter..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {quarters.map((q) => {
+                      const key = `${q.quarter}|${q.fiscal_year}`;
+                      return (
+                        <SelectItem key={key} value={key}>
+                          {q.quarter} FY{q.fiscal_year}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={handleApply}
+                disabled={!selectedCompany || !selectedQuarterKey || detailLoading}
+                className="bg-[#C00000] hover:bg-[#C00000] text-white px-8 disabled:opacity-50"
+              >
+                {detailLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : null}
+                Apply
+              </Button>
+              {selectedCompany && quarters.length === 0 && (
+                <span className="text-sm text-slate-500">
+                  No quarters available for {selectedCompany}. Upload documents first.
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {!selectedCompany && (
+        {!applied && (
           <Card className="border-[#d4dce6] p-12 text-center">
             <div className="max-w-md mx-auto">
               <div className="w-16 h-16 rounded-full bg-[#FEE2E2] flex items-center justify-center mx-auto mb-4">
-                <TrendingUp className="w-8 h-8 text-[#ED232A]" />
+                <TrendingUp className="w-8 h-8 text-[#C00000]" />
               </div>
               <h3 className="text-xl font-semibold text-[#002850] mb-2">
-                Select a Company to Begin
+                Select a Company and Quarter to Begin
               </h3>
               <p className="text-slate-600">
-                Choose a company above to explore historical earnings data, key topics, and AI-powered insights.
+                Choose a company and quarter above, then click <span className="font-semibold">Apply</span> to explore historical earnings data, key topics, and AI-powered insights.
               </p>
             </div>
           </Card>
         )}
 
-        {selectedCompany && (
+        {applied && (
           <>
             {/* Key Topics Word Cloud */}
-            <Card className="border-[#ED232A]/30 shadow-lg">
+            <Card className="border-[#C00000]/30 shadow-lg">
               <CardHeader className="bg-gradient-to-r from-[#FEE2E2] to-white border-b border-[#d4dce6]">
                 <CardTitle className="text-[#002850] text-xl">
-                  Key Topics — Last 4 Quarters
+                  Key Topics
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
                 {topicsLoading ? (
                   <div className="h-[200px] flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-[#ED232A]" />
+                    <Loader2 className="w-8 h-8 animate-spin text-[#C00000]" />
                   </div>
                 ) : topics.length === 0 ? (
                   <div className="h-[200px] flex items-center justify-center text-slate-500">
@@ -424,75 +468,35 @@ export default function HistoricalIntelligenceHub() {
               </CardContent>
             </Card>
 
-            {/* Generate AI Summary Button */}
-            <div className="flex justify-center">
-              <Button
-                onClick={handleGenerateSummary}
-                disabled={!selectedQuarterKey || summaryLoading}
-                className="bg-[#ED232A] hover:bg-[#B91C1C] text-white px-8 h-12 text-base disabled:opacity-50"
-              >
-                {summaryLoading ? (
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                ) : (
-                  <Sparkles className="w-5 h-5 mr-2" />
-                )}
-                {summaryLoading ? "Generating..." : "Generate AI Summary"}
-                {parsedQuarter && (
-                  <span className="ml-2 text-sm">
-                    ({parsedQuarter.quarter} FY{parsedQuarter.fiscal_year})
-                  </span>
-                )}
-              </Button>
-            </div>
-
-            {/* Quarter Selection */}
-            <Card className="border-[#ED232A]/30 shadow-lg">
-              <CardHeader className="bg-gradient-to-r from-[#FEE2E2] to-white border-b border-[#d4dce6]">
-                <CardTitle className="text-[#002850] text-xl">
-                  Select Quarter for Detailed Analysis
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                {quarters.length === 0 ? (
-                  <p className="text-slate-500">No quarters available for {selectedCompany}. Upload documents first.</p>
-                ) : (
-                  <Select value={selectedQuarterKey} onValueChange={handleQuarterSelect}>
-                    <SelectTrigger className="w-full max-w-sm border-[#ED232A] h-11">
-                      <SelectValue placeholder="Choose a quarter to explore..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {quarters.map((q) => {
-                        const key = `${q.quarter}|${q.fiscal_year}`;
-                        return (
-                          <SelectItem key={key} value={key}>
-                            {q.quarter} FY{q.fiscal_year}
-                            {q.document_count > 0 && ` — ${q.document_count} doc${q.document_count > 1 ? "s" : ""}`}
-                            {q.actual_qa_count > 0 && ` — ${q.actual_qa_count} Q&A`}
-                            {q.has_analysis && " — Analyzed"}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                )}
-              </CardContent>
-            </Card>
-
             {/* Loading state */}
             {detailLoading && (
               <div className="flex justify-center py-12">
-                <Loader2 className="w-10 h-10 animate-spin text-[#ED232A]" />
+                <Loader2 className="w-10 h-10 animate-spin text-[#C00000]" />
               </div>
             )}
 
             {/* AI Summary — always visible once a quarter is selected */}
             {parsedQuarter && !detailLoading && (
-              <Card className="border-[#ED232A]/30 shadow-lg bg-gradient-to-br from-white to-[#FEE2E2]/30">
-                <CardHeader className="bg-gradient-to-r from-[#ED232A] to-[#B91C1C] text-white border-b">
-                  <CardTitle className="text-xl flex items-center gap-2">
-                    <Sparkles className="w-6 h-6" />
-                    AI-Generated Summary — {parsedQuarter.quarter} FY{parsedQuarter.fiscal_year}
-                  </CardTitle>
+              <Card className="border-[#C00000]/30 shadow-lg bg-gradient-to-br from-white to-[#FEE2E2]/30">
+                <CardHeader className="bg-gradient-to-r from-[#C00000] to-[#C00000] text-white border-b">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <Sparkles className="w-6 h-6" />
+                      AI-Generated Summary — {parsedQuarter.quarter} FY{parsedQuarter.fiscal_year}
+                    </CardTitle>
+                    <Button
+                      onClick={handleGenerateSummary}
+                      disabled={summaryLoading}
+                      className="bg-white text-[#C00000] hover:bg-white/90 disabled:opacity-50"
+                    >
+                      {summaryLoading ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 mr-2" />
+                      )}
+                      Generate AI Summary
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-6">
                   <div className="prose prose-sm max-w-none">
@@ -513,7 +517,7 @@ export default function HistoricalIntelligenceHub() {
                       <Button
                         onClick={handleDownloadSummary}
                         size="sm"
-                        className="bg-[#ED232A] hover:bg-[#B91C1C] text-white"
+                        className="bg-[#C00000] hover:bg-[#C00000] text-white"
                       >
                         <FileText className="w-4 h-4 mr-2" />
                         Download Full Report
@@ -544,14 +548,14 @@ export default function HistoricalIntelligenceHub() {
                 >
                   <AccordionTrigger className="px-6 hover:no-underline">
                     <div className="flex items-center gap-3">
-                      <FileText className="w-5 h-5 text-[#ED232A]" />
+                      <FileText className="w-5 h-5 text-[#C00000]" />
                       <span className="font-semibold text-[#002850] text-lg">
                         Documents for {parsedQuarter.quarter} FY
                         {parsedQuarter.fiscal_year}
                       </span>
                       <Badge
                         variant="outline"
-                        className="border-[#ED232A] text-[#ED232A]"
+                        className="border-[#C00000] text-[#C00000]"
                       >
                         {quarterDocuments.length}
                       </Badge>
@@ -614,13 +618,13 @@ export default function HistoricalIntelligenceHub() {
                 >
                   <AccordionTrigger className="px-6 hover:no-underline">
                     <div className="flex items-center gap-3">
-                      <MessageSquare className="w-5 h-5 text-[#ED232A]" />
+                      <MessageSquare className="w-5 h-5 text-[#C00000]" />
                       <span className="font-semibold text-[#002850] text-lg">
                         Questions Asked During Actual Earnings Call
                       </span>
                       <Badge
                         variant="outline"
-                        className="border-[#ED232A] text-[#ED232A]"
+                        className="border-[#C00000] text-[#C00000]"
                       >
                         {quarterDetail?.questions.length ?? 0}
                       </Badge>
@@ -632,7 +636,7 @@ export default function HistoricalIntelligenceHub() {
                         {quarterDetail.questions.map((q) => (
                           <div
                             key={q.id}
-                            className="p-4 bg-[#FEE2E2]/50 rounded-lg border border-[#ED232A]/20"
+                            className="p-4 bg-[#FEE2E2]/50 rounded-lg border border-[#C00000]/20"
                           >
                             <div className="font-medium text-[#002850] mb-1">
                               {q.question}
@@ -671,13 +675,13 @@ export default function HistoricalIntelligenceHub() {
                 >
                   <AccordionTrigger className="px-6 hover:no-underline">
                     <div className="flex items-center gap-3">
-                      <MessageSquare className="w-5 h-5 text-[#ED232A]" />
+                      <MessageSquare className="w-5 h-5 text-[#C00000]" />
                       <span className="font-semibold text-[#002850] text-lg">
                         Call Attendees
                       </span>
                       <Badge
                         variant="outline"
-                        className="border-[#ED232A] text-[#ED232A]"
+                        className="border-[#C00000] text-[#C00000]"
                       >
                         {quarterDetail?.attendees.length ?? 0}
                       </Badge>
@@ -694,7 +698,7 @@ export default function HistoricalIntelligenceHub() {
                           return (
                             <div
                               key={role}
-                              className="p-4 rounded-lg border border-[#ED232A]/20 bg-[#FEE2E2]/30"
+                              className="p-4 rounded-lg border border-[#C00000]/20 bg-[#FEE2E2]/30"
                             >
                               <div className="text-sm font-medium text-[#002850] mb-2 capitalize">
                                 {role === "management" ? "Management" : "Analysts"}
@@ -705,7 +709,7 @@ export default function HistoricalIntelligenceHub() {
                                     key={`${role}-${idx}`}
                                     className="text-sm text-slate-700 flex items-start gap-2"
                                   >
-                                    <div className="w-1.5 h-1.5 rounded-full bg-[#ED232A] mt-1.5 flex-shrink-0" />
+                                    <div className="w-1.5 h-1.5 rounded-full bg-[#C00000] mt-1.5 flex-shrink-0" />
                                     {a.name}
                                   </li>
                                 ))}
@@ -731,13 +735,13 @@ export default function HistoricalIntelligenceHub() {
                 >
                   <AccordionTrigger className="px-6 hover:no-underline">
                     <div className="flex items-center gap-3">
-                      <FileText className="w-5 h-5 text-[#ED232A]" />
+                      <FileText className="w-5 h-5 text-[#C00000]" />
                       <span className="font-semibold text-[#002850] text-lg">
                         Key Discussion Themes
                       </span>
                       <Badge
                         variant="outline"
-                        className="border-[#ED232A] text-[#ED232A]"
+                        className="border-[#C00000] text-[#C00000]"
                       >
                         {quarterDetail?.themes.length ?? 0}
                       </Badge>
@@ -749,7 +753,7 @@ export default function HistoricalIntelligenceHub() {
                         {quarterDetail.themes.map((theme, idx) => (
                           <Badge
                             key={idx}
-                            className={`px-3 py-1.5 ${IMPORTANCE_COLORS[theme.importance] || "bg-[#FEE2E2] text-[#ED232A] border-[#ED232A]/30"}`}
+                            className={`px-3 py-1.5 ${IMPORTANCE_COLORS[theme.importance] || "bg-[#FEE2E2] text-[#C00000] border-[#C00000]/30"}`}
                           >
                             {theme.name}
                           </Badge>
@@ -772,13 +776,13 @@ export default function HistoricalIntelligenceHub() {
                   >
                     <AccordionTrigger className="px-6 hover:no-underline">
                       <div className="flex items-center gap-3">
-                        <AlertTriangle className="w-5 h-5 text-[#ED232A]" />
+                        <AlertTriangle className="w-5 h-5 text-[#C00000]" />
                         <span className="font-semibold text-[#002850] text-lg">
                           Signals & Risks
                         </span>
                         <Badge
                           variant="outline"
-                          className="border-[#ED232A] text-[#ED232A]"
+                          className="border-[#C00000] text-[#C00000]"
                         >
                           {quarterDetail.signals.length}
                         </Badge>
@@ -826,7 +830,7 @@ export default function HistoricalIntelligenceHub() {
                       {quarterDetail?.sentiment.overall === "positive" ? (
                         <TrendingUp className="w-5 h-5 text-[#10b981]" />
                       ) : quarterDetail?.sentiment.overall === "negative" ? (
-                        <TrendingDown className="w-5 h-5 text-[#E31837]" />
+                        <TrendingDown className="w-5 h-5 text-[#C00000]" />
                       ) : (
                         <Minus className="w-5 h-5 text-slate-500" />
                       )}
@@ -871,8 +875,8 @@ export default function HistoricalIntelligenceHub() {
                           </div>
                         )}
                         {quarterDetail.sentiment.negative_points.length > 0 && (
-                          <div className="p-4 bg-[#E31837]/5 border border-[#E31837]/20 rounded-lg">
-                            <div className="text-sm font-medium text-[#E31837] mb-2">
+                          <div className="p-4 bg-[#C00000]/5 border border-[#C00000]/20 rounded-lg">
+                            <div className="text-sm font-medium text-[#C00000] mb-2">
                               Risks & Concerns
                             </div>
                             <ul className="space-y-1.5">
@@ -881,7 +885,7 @@ export default function HistoricalIntelligenceHub() {
                                   key={idx}
                                   className="text-sm text-slate-700 flex items-start gap-2"
                                 >
-                                  <div className="w-1.5 h-1.5 rounded-full bg-[#E31837] mt-1.5 flex-shrink-0" />
+                                  <div className="w-1.5 h-1.5 rounded-full bg-[#C00000] mt-1.5 flex-shrink-0" />
                                   {item}
                                 </li>
                               ))}
@@ -901,29 +905,11 @@ export default function HistoricalIntelligenceHub() {
               </Accordion>
             )}
 
-            {/* No quarter selected empty state */}
-            {!selectedQuarterKey && !detailLoading && (
-              <Card className="border-[#d4dce6] p-12 text-center">
-                <div className="max-w-md mx-auto">
-                  <div className="w-16 h-16 rounded-full bg-[#FEE2E2] flex items-center justify-center mx-auto mb-4">
-                    <TrendingUp className="w-8 h-8 text-[#ED232A]" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-[#002850] mb-2">
-                    Select a Quarter to Begin
-                  </h3>
-                  <p className="text-slate-600">
-                    Choose a quarter from the dropdown above to explore detailed
-                    earnings call analysis, questions, and more.
-                  </p>
-                </div>
-              </Card>
-            )}
-
             {/* AI Chat Assistant */}
-            <Card className="border-[#ED232A]/30 shadow-lg">
+            <Card className="border-[#C00000]/30 shadow-lg">
               <CardHeader className="bg-gradient-to-r from-[#FEE2E2] to-white border-b border-[#d4dce6]">
                 <CardTitle className="text-[#002850] text-xl flex items-center gap-2">
-                  <Bot className="w-6 h-6 text-[#ED232A]" />
+                  <Bot className="w-6 h-6 text-[#C00000]" />
                   AI Intelligence Assistant
                 </CardTitle>
                 <p className="text-sm text-slate-600 mt-1">
@@ -942,16 +928,16 @@ export default function HistoricalIntelligenceHub() {
                           className={`flex gap-3 max-w-[85%] ${msg.type === "user" ? "flex-row-reverse" : "flex-row"}`}
                         >
                           <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.type === "user" ? "bg-[#ED232A]" : "bg-gradient-to-br from-[#FEE2E2] to-[#ED232A]/20 border border-[#ED232A]/30"}`}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.type === "user" ? "bg-[#C00000]" : "bg-gradient-to-br from-[#FEE2E2] to-[#C00000]/20 border border-[#C00000]/30"}`}
                           >
                             {msg.type === "user" ? (
                               <User className="w-4 h-4 text-white" />
                             ) : (
-                              <Bot className="w-4 h-4 text-[#ED232A]" />
+                              <Bot className="w-4 h-4 text-[#C00000]" />
                             )}
                           </div>
                           <div
-                            className={`rounded-2xl p-4 ${msg.type === "user" ? "bg-[#ED232A] text-white" : "bg-white border border-[#d4dce6]"}`}
+                            className={`rounded-2xl p-4 ${msg.type === "user" ? "bg-[#C00000] text-white" : "bg-white border border-[#d4dce6]"}`}
                           >
                             <div className="text-sm leading-relaxed whitespace-pre-line">
                               {msg.text}
@@ -971,11 +957,11 @@ export default function HistoricalIntelligenceHub() {
                     {chatLoading && (
                       <div className="flex justify-start">
                         <div className="flex gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FEE2E2] to-[#ED232A]/20 border border-[#ED232A]/30 flex items-center justify-center">
-                            <Bot className="w-4 h-4 text-[#ED232A]" />
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FEE2E2] to-[#C00000]/20 border border-[#C00000]/30 flex items-center justify-center">
+                            <Bot className="w-4 h-4 text-[#C00000]" />
                           </div>
                           <div className="rounded-2xl p-4 bg-white border border-[#d4dce6]">
-                            <Loader2 className="w-5 h-5 animate-spin text-[#ED232A]" />
+                            <Loader2 className="w-5 h-5 animate-spin text-[#C00000]" />
                           </div>
                         </div>
                       </div>
@@ -989,13 +975,13 @@ export default function HistoricalIntelligenceHub() {
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSubmit()}
                     placeholder="Ask about trends, themes, key concerns, or any earnings data..."
-                    className="flex-1 border-[#ED232A]/50 focus:border-[#ED232A] h-12"
+                    className="flex-1 border-[#C00000]/50 focus:border-[#C00000] h-12"
                     disabled={chatLoading}
                   />
                   <Button
                     onClick={handleChatSubmit}
                     disabled={!chatInput.trim() || chatLoading}
-                    className="bg-[#ED232A] hover:bg-[#B91C1C] text-white px-6 h-12 disabled:opacity-50"
+                    className="bg-[#C00000] hover:bg-[#C00000] text-white px-6 h-12 disabled:opacity-50"
                   >
                     {chatLoading ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -1019,7 +1005,7 @@ export default function HistoricalIntelligenceHub() {
                           `What are the key themes from ${selectedCompany}'s recent earnings?`,
                         )
                       }
-                      className="border-[#ED232A]/30 text-[#ED232A] text-xs hover:bg-[#FEE2E2]"
+                      className="border-[#C00000]/30 text-[#C00000] text-xs hover:bg-[#FEE2E2]"
                     >
                       <Sparkles className="w-3 h-3 mr-1.5" />
                       Key Themes
@@ -1032,7 +1018,7 @@ export default function HistoricalIntelligenceHub() {
                           `Compare performance trends across the last few quarters for ${selectedCompany}`,
                         )
                       }
-                      className="border-[#ED232A]/30 text-[#ED232A] text-xs hover:bg-[#FEE2E2]"
+                      className="border-[#C00000]/30 text-[#C00000] text-xs hover:bg-[#FEE2E2]"
                     >
                       <TrendingUp className="w-3 h-3 mr-1.5" />
                       Compare Trends
@@ -1045,7 +1031,7 @@ export default function HistoricalIntelligenceHub() {
                           `What are the main risks and concerns raised by analysts for ${selectedCompany}?`,
                         )
                       }
-                      className="border-[#ED232A]/30 text-[#ED232A] text-xs hover:bg-[#FEE2E2]"
+                      className="border-[#C00000]/30 text-[#C00000] text-xs hover:bg-[#FEE2E2]"
                     >
                       <MessageSquare className="w-3 h-3 mr-1.5" />
                       Key Concerns
@@ -1058,7 +1044,7 @@ export default function HistoricalIntelligenceHub() {
                           `What questions did analysts ask most frequently about ${selectedCompany}?`,
                         )
                       }
-                      className="border-[#ED232A]/30 text-[#ED232A] text-xs hover:bg-[#FEE2E2]"
+                      className="border-[#C00000]/30 text-[#C00000] text-xs hover:bg-[#FEE2E2]"
                     >
                       <MessageSquare className="w-3 h-3 mr-1.5" />
                       Top Questions
