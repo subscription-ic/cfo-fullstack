@@ -383,137 +383,6 @@ function collectUploadPayload(
   }
 }
 
-function DeleteCompanyTab({ companies, onDeleted }: { companies: string[], onDeleted: (name: string) => void }) {
-  const [selectedCompany, setSelectedCompany] = useState<string>("");
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  const handleDelete = async () => {
-    if (!selectedCompany) return;
-    if (!window.confirm(`Are you sure you want to PERMANENTLY delete "${selectedCompany}" and ALL related earnings calls, questions, and comparisons? This cannot be undone.`)) return;
-
-    setIsDeleting(true);
-    setMessage(null);
-    try {
-      const res = await fetch(`${API_URL}/api/companies/${encodeURIComponent(selectedCompany)}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Failed to delete company");
-      }
-      const data = await res.json();
-      setMessage({ type: "success", text: `"${data.deleted}" and all related records have been permanently deleted.` });
-      onDeleted(selectedCompany);
-      setSelectedCompany("");
-    } catch (err: any) {
-      setMessage({ type: "error", text: err.message });
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      {/* Gradient header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-700 via-red-800 to-red-950 p-8 text-white shadow-xl">
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{ backgroundImage: "radial-gradient(circle at 80% 20%, #fff 1px, transparent 1px)", backgroundSize: "24px 24px" }}
-        />
-        <div className="relative z-10 flex items-start gap-5">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 shadow-inner">
-            <Trash2 className="h-7 w-7 text-white" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Delete Company</h2>
-            <p className="mt-1 text-red-200 text-sm leading-relaxed">
-              Permanently remove a company and every record associated with it — earnings calls, actual Q&amp;A, predicted questions, and comparison data.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Danger zone card */}
-      <Card className="border-red-200 shadow-md overflow-hidden">
-        <div className="h-1 w-full bg-gradient-to-r from-red-500 via-red-700 to-red-500" />
-        <CardContent className="pt-6 pb-8 px-6 space-y-6">
-
-          {/* Warning banner */}
-          <div className="flex gap-3 rounded-xl bg-red-50 border border-red-200 p-4">
-            <div className="text-red-600 text-xl mt-0.5">⚠️</div>
-            <div>
-              <p className="font-semibold text-red-800 text-sm">Irreversible Action</p>
-              <p className="text-red-600 text-xs mt-0.5 leading-relaxed">
-                All earnings calls, actual questions, predicted questions, and comparison records linked to this company will be <strong>permanently erased</strong> from the database. There is no undo.
-              </p>
-            </div>
-          </div>
-
-          {/* Company selector */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-slate-700">Select Company to Delete</Label>
-            <Select value={selectedCompany} onValueChange={setSelectedCompany}>
-              <SelectTrigger className="w-full h-11 border-slate-300 rounded-lg">
-                <SelectValue placeholder="Choose a company from the database..." />
-              </SelectTrigger>
-              <SelectContent>
-                {companies.length > 0 ? (
-                  companies.map(c => (
-                    <SelectItem key={c} value={c}>
-                      <div className="flex items-center gap-2">
-                        <div className="h-2 w-2 rounded-full bg-red-500" />
-                        {c}
-                      </div>
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="none" disabled>No companies in database</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-            {selectedCompany && (
-              <p className="text-xs text-slate-500 mt-1 pl-1">
-                You are about to delete: <span className="font-semibold text-red-700">{selectedCompany}</span>
-              </p>
-            )}
-          </div>
-
-          {/* Feedback message */}
-          {message && (
-            <div className={`flex items-start gap-3 p-4 rounded-xl text-sm border ${
-              message.type === "success"
-                ? "bg-green-50 text-green-800 border-green-200"
-                : "bg-red-50 text-red-800 border-red-200"
-            }`}>
-              <span className="text-base mt-0.5">{message.type === "success" ? "✅" : "❌"}</span>
-              <span>{message.text}</span>
-            </div>
-          )}
-
-          {/* Delete button */}
-          <Button
-            onClick={handleDelete}
-            disabled={!selectedCompany || isDeleting}
-            className="w-full h-11 bg-red-700 hover:bg-red-800 active:bg-red-900 text-white font-semibold rounded-lg shadow-md transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {isDeleting ? (
-              <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" /> Deleting...</>
-            ) : (
-              <><Trash2 className="w-4 h-4 mr-2" /> Delete {selectedCompany || "Company"} Permanently</>
-            )}
-          </Button>
-
-          {!selectedCompany && (
-            <p className="text-center text-xs text-slate-400">Select a company above to enable deletion.</p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
@@ -549,26 +418,6 @@ export default function AdminDashboard() {
     "all" | "correct" | "missed" | "false"
   >("all");
 
-  useEffect(() => {
-    if (!reviewCompany) return;
-    setComparisonLoading(true);
-    fetch(`${API_URL}/api/comparisons?company=${encodeURIComponent(reviewCompany)}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.data) {
-          setComparisonState(data.data);
-          const periods = Array.from(new Set(data.data.map((q: any) => q.period))) as string[];
-          periods.sort((a, b) => {
-            const parseP = (p: string) => { const m = p.match(/Q(\d)\s+FY(\d+)/); return m ? parseInt(m[2]) * 10 + parseInt(m[1]) : 0; };
-            return parseP(a) - parseP(b);
-          });
-          setAvailableComparisonQuarters(periods);
-          if (periods.length > 0) setActiveComparisonQuarter(periods[periods.length - 1]);
-        }
-      })
-      .catch(err => console.error("Failed to fetch comparisons:", err))
-      .finally(() => setComparisonLoading(false));
-  }, [reviewCompany]);
   const [companyName, setCompanyName] = useState("");
   const [newCompanyInput, setNewCompanyInput] = useState("");
   const [deletingQuarter, setDeletingQuarter] = useState<string | null>(null);
@@ -1164,10 +1013,7 @@ export default function AdminDashboard() {
       id: Math.random().toString(36).substring(7),
       period: period,
       question: "",
-      questionTopics: "",
       answer: "",
-      answerSummary: "",
-      keyPoints: "",
       answeredBy: "",
       category: "",
     });
@@ -1204,47 +1050,22 @@ export default function AdminDashboard() {
         <TabsList className="mb-10 flex w-full max-w-2xl bg-slate-200/80 p-2 rounded-2xl mx-auto shadow-inner">
           <TabsTrigger
             value="generate"
-            className="group relative flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#002850]/30 data-[state=active]:border-[#002850] data-[state=active]:bg-[#002850] data-[state=active]:shadow-lg data-[state=active]:shadow-[#002850]/20 data-[state=active]:scale-[1.02]"
+            className="flex-1 rounded-xl py-4 text-lg font-medium text-slate-600 data-[state=active]:bg-[#002850] data-[state=active]:text-white data-[state=active]:shadow-lg transition-all"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 group-data-[state=active]:bg-white/15 transition-colors">
-              <Upload className="w-5 h-5 text-slate-500 group-data-[state=active]:text-white" />
+            <div className="flex items-center justify-center gap-2">
+              <Upload className="w-5 h-5" />
+              Generate Q&A
             </div>
-            <span className="text-sm font-semibold text-slate-600 group-data-[state=active]:text-white">Generate Q&amp;A</span>
-            <span className="text-[10px] text-slate-400 group-data-[state=active]:text-blue-200 leading-tight text-center">Upload &amp; extract transcripts</span>
           </TabsTrigger>
-
-          <TabsTrigger
+          {/* <TabsTrigger
             value="review"
-            className="group relative flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#002850]/30 data-[state=active]:border-[#002850] data-[state=active]:bg-[#002850] data-[state=active]:shadow-lg data-[state=active]:shadow-[#002850]/20 data-[state=active]:scale-[1.02]"
+            className="flex-1 rounded-xl py-4 text-lg font-medium text-slate-600 data-[state=active]:bg-[#002850] data-[state=active]:text-white data-[state=active]:shadow-lg transition-all"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 group-data-[state=active]:bg-white/15 transition-colors">
-              <FileSpreadsheet className="w-5 h-5 text-slate-500 group-data-[state=active]:text-white" />
+            <div className="flex items-center justify-center gap-2">
+              <FileSpreadsheet className="w-5 h-5" />
+              Review Q&A
             </div>
-            <span className="text-sm font-semibold text-slate-600 group-data-[state=active]:text-white">Review Q&amp;A</span>
-            <span className="text-[10px] text-slate-400 group-data-[state=active]:text-blue-200 leading-tight text-center">Browse &amp; edit Q&amp;A records</span>
-          </TabsTrigger>
-
-          <TabsTrigger
-            value="users"
-            className="group relative flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#002850]/30 data-[state=active]:border-[#002850] data-[state=active]:bg-[#002850] data-[state=active]:shadow-lg data-[state=active]:shadow-[#002850]/20 data-[state=active]:scale-[1.02]"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 group-data-[state=active]:bg-white/15 transition-colors">
-              <UserPlus className="w-5 h-5 text-slate-500 group-data-[state=active]:text-white" />
-            </div>
-            <span className="text-sm font-semibold text-slate-600 group-data-[state=active]:text-white">Manage Users</span>
-            <span className="text-[10px] text-slate-400 group-data-[state=active]:text-blue-200 leading-tight text-center">Add &amp; manage user accounts</span>
-          </TabsTrigger>
-
-          <TabsTrigger
-            value="delete-company"
-            className="group relative flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-red-400/40 data-[state=active]:border-red-700 data-[state=active]:bg-red-700 data-[state=active]:shadow-lg data-[state=active]:shadow-red-700/20 data-[state=active]:scale-[1.02]"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 group-data-[state=active]:bg-white/15 transition-colors">
-              <Trash2 className="w-5 h-5 text-red-500 group-data-[state=active]:text-white" />
-            </div>
-            <span className="text-sm font-semibold text-slate-600 group-data-[state=active]:text-white">Delete Company</span>
-            <span className="text-[10px] text-slate-400 group-data-[state=active]:text-red-200 leading-tight text-center">Remove all company data</span>
-          </TabsTrigger>
+          </TabsTrigger> */}
           {/* <TabsTrigger
             value="analysis"
             className="flex-1 rounded-xl py-4 text-lg font-medium text-slate-600 data-[state=active]:bg-[#002850] data-[state=active]:text-white data-[state=active]:shadow-lg transition-all"
@@ -1256,89 +1077,8 @@ export default function AdminDashboard() {
           </TabsTrigger> */}
         </TabsList>
 
-        <TabsContent value="users">
-          <Card className="border-slate-200 shadow-sm max-w-2xl mx-auto">
-            <CardHeader>
-              <CardTitle className="text-xl text-[#8B1319]">
-                Create New User
-              </CardTitle>
-              <CardDescription>
-                Provision a new account for an employee. They will be able to log in securely.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreateUser} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input
-                      id="firstName"
-                      value={userFirstName}
-                      onChange={(e) => setUserFirstName(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input
-                      id="lastName"
-                      value={userLastName}
-                      onChange={(e) => setUserLastName(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email Address</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={userEmail}
-                    onChange={(e) => setUserEmail(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Temporary Password</Label>
-                  <Input
-                    id="password"
-                    type="text"
-                    value={userPassword}
-                    onChange={(e) => setUserPassword(e.target.value)}
-                    required
-                    minLength={6}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>System Role</Label>
-                  <Select value={userRole} onValueChange={setUserRole}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="user">Standard User</SelectItem>
-                      <SelectItem value="admin">Administrator</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {userMessage && (
-                  <div className={`p-3 rounded-md text-sm ${userMessage.includes("success") ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                    {userMessage}
-                  </div>
-                )}
-                <Button type="submit" disabled={isCreatingUser} className="w-full bg-[#002850] hover:bg-[#002850]/90">
-                  {isCreatingUser ? "Provisioning..." : "Create Account"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="delete-company">
-          <DeleteCompanyTab companies={availableCompanies} onDeleted={(name) => setAvailableCompanies(prev => prev.filter(c => c !== name))} />
-        </TabsContent>
-
-        <TabsContent value="review">
+        {/* Review Q&A tab — hidden for now */}
+        {false && <TabsContent value="review">
           <div className="space-y-6">
             <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-xl border border-slate-200">
               <span className="font-medium text-slate-700">Company:</span>
@@ -1813,18 +1553,6 @@ export default function AdminDashboard() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Question Topics</Label>
-                    <Input
-                      value={editingQuestion.questionTopics || ""}
-                      onChange={(e) =>
-                        setEditingQuestion({
-                          ...editingQuestion,
-                          questionTopics: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
                     <Label>Answer</Label>
                     <Textarea
                       value={editingQuestion.answer}
@@ -1834,36 +1562,8 @@ export default function AdminDashboard() {
                           answer: e.target.value,
                         })
                       }
-                      className="min-h-[120px] break-words [overflow-wrap:anywhere]"
+                      className="min-h-[220px] break-words [overflow-wrap:anywhere]"
                     />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Answer Summary</Label>
-                      <Textarea
-                        value={editingQuestion.answerSummary || ""}
-                        onChange={(e) =>
-                          setEditingQuestion({
-                            ...editingQuestion,
-                            answerSummary: e.target.value,
-                          })
-                        }
-                        className="min-h-[80px] break-words [overflow-wrap:anywhere]"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Key Points</Label>
-                      <Textarea
-                        value={editingQuestion.keyPoints || ""}
-                        onChange={(e) =>
-                          setEditingQuestion({
-                            ...editingQuestion,
-                            keyPoints: e.target.value,
-                          })
-                        }
-                        className="min-h-[80px] break-words [overflow-wrap:anywhere]"
-                      />
-                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -2233,45 +1933,6 @@ export default function AdminDashboard() {
               </TabsContent>
             </Tabs>
 
-            <Card className="border-slate-200">
-              <CardHeader>
-                <CardTitle className="text-xl text-[#8B1319]">
-                  Cut-off Date
-                </CardTitle>
-                <CardDescription>
-                  Optional: Specify a cut-off date for generating answers and context.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Input
-                  type="date"
-                  value={cutOffDate}
-                  max="2099-12-31"
-                  onChange={(e) => setCutOffDate(e.target.value)}
-                  className="max-w-xs block w-full [&::-webkit-calendar-picker-indicator]:ml-auto [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-                />
-              </CardContent>
-            </Card>
-
-            <Card className="border-slate-200">
-              <CardHeader>
-                <CardTitle className="text-xl text-[#8B1319]">
-                  Search Queries
-                </CardTitle>
-                <CardDescription>
-                  Modify the initial Tavily search queries if needed. Each line is treated as a separate query. {"{company}"} and {"{cutoff}"} will be dynamically injected.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <textarea
-                  value={searchQueries}
-                  onChange={(e) => setSearchQueries(e.target.value)}
-                  className="flex min-h-[140px] w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#8B1319]/20 focus:border-[#8B1319] transition-all disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Enter one query per line..."
-                />
-              </CardContent>
-            </Card>
-
             {/* Action Bar */}
             <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 mb-20">
               <Button
@@ -2300,11 +1961,6 @@ export default function AdminDashboard() {
                 )}
                 Upload documents
               </Button>
-              {processingMessage && (
-                <div className={`mt-3 text-sm font-medium px-4 py-2 rounded-lg ${processingMessage.includes("complete") ? "bg-green-100 text-green-800" : "bg-blue-50 text-blue-700 animate-pulse"}`}>
-                  {processingMessage}
-                </div>
-              )}
             </div>
 
             <Card className="border-slate-200 mb-10">
@@ -2403,5 +2059,3 @@ export default function AdminDashboard() {
     </div>
   );
 }
-
-

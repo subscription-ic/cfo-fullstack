@@ -22,13 +22,6 @@ import {
   fetchSimulatorSuggestedAnswer,
   type PredictedQA,
 } from '../utils/api';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
 import { AnswerWithCitationLinks } from '../components/AnswerWithCitationLinks';
 
 interface QuestionItem {
