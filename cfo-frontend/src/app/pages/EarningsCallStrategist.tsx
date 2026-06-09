@@ -587,7 +587,7 @@ export default function EarningsCallStrategist() {
                       <SelectValue placeholder="Select a company" />
                     </SelectTrigger>
                     <SelectContent>
-                      {companies.map(c => (
+                      {allCompanies.map(c => (
                         <SelectItem key={c} value={c}>{c}</SelectItem>
                       ))}
                     </SelectContent>
