@@ -84,3 +84,25 @@ def delete_quarter_cascade(
         pass
 
     return {"documents_deleted": deleted}
+
+def get_download_url(supabase: Client, document_id: str, expires_in: int = 300) -> dict[str, Any]:
+    """Short-lived signed URL for viewing/downloading an ingested document.
+
+    Read-only: nothing in the database or storage is modified. The frontend has
+    no Supabase credentials, so the signing has to happen here.
+    """
+    repo = DocumentsRepository(supabase)
+    row = repo.get_storage_ref(document_id)
+    if not row:
+        raise LookupError(f"document {document_id} not found")
+
+    bucket = row.get("storage_bucket")
+    path = (row.get("storage_path") or "").lstrip("/")
+    if not bucket or not path:
+        raise LookupError("document has no stored file")
+
+    signed = supabase.storage.from_(bucket).create_signed_url(path, expires_in)
+    url = signed.get("signedURL") or signed.get("signedUrl") or signed.get("signed_url")
+    if not url:
+        raise RuntimeError("storage did not return a signed URL")
+    return {"url": url, "expires_in": expires_in}

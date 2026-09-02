@@ -1,7 +1,10 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-size: 16px;
+  /* Root type scale. Tailwind's text-* and spacing utilities are rem-based,
+     so this single value scales text AND spacing across every page.
+     Raised 16 -> 18 to make the whole UI read larger at 100% zoom. */
+  --font-size: 18px;
   --background: #ffffff;
   --foreground: #1a1a1a;
   --card: #ffffff;
@@ -16,11 +19,13 @@
   --muted-foreground: #4a5568;
   --accent: #E8F2F9;
   --accent-foreground: #004C8F;
-  --destructive: #C00000;
+  --destructive: #a01419;
   --destructive-foreground: #ffffff;
   --border: #d4dce6;
-  --input: transparent;
-  --input-background: #f5f7fa;
+  /* was `transparent`, which made every default-bordered Select/Input
+     border invisible. Booklet .sel-input: white field, hairline border. */
+  --input: rgba(26, 15, 15, 0.12);
+  --input-background: #ffffff;
   --switch-background: #cbd5e1;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
@@ -46,12 +51,66 @@
   --bank-blue-700: #004C8F;
   --bank-blue-600: #0066B3;
   --bank-blue-500: #3399CC;
-  --bank-red: #C00000;
+  --bank-red: #a01419;
   --bank-gray-100: #f5f7fa;
   --bank-gray-200: #e8ecf1;
   --bank-gray-300: #d4dce6;
   --bank-gray-700: #4a5568;
   --bank-gray-900: #1a1a1a;
+
+  /* ---------------------------------------------------------------------
+     Acuvon Design System Storybook v1.0 — [data-theme="red"] ("Acuvon Red")
+     Verbatim token values from the design booklet. Prefixed --acu-* so they
+     sit alongside the existing bank/shadcn tokens without colliding.
+     --------------------------------------------------------------------- */
+  --acu-ink: #1a0f0f;
+  --acu-ink2: #3f2a2a;
+  --acu-ink3: #7a6262;
+  --acu-ink4: #a89898;
+
+  --acu-paper: #ffffff;
+  --acu-paper2: #faf3f2;
+  --acu-paper3: #f0dfdc;
+  --acu-white: #ffffff;
+
+  --acu-accent: #5a1416;
+  --acu-accent2: #a01419;
+  --acu-accent-light: #f5d4d4;
+  --acu-accent-pale: #fcecec;
+
+  --acu-gold: #b07d2a;
+  --acu-gold-light: #f5ecd4;
+  --acu-gold-pale: #fdf8ee;
+
+  /* Booklet's --red slot; in the red theme it resolves to green and is the
+     contrast/secondary series colour. Used here for "positive" so finance
+     charts stay semantically correct (see --acu-neg for negative). */
+  --acu-pos: #2d6045;
+  --acu-pos-light: #d4ead9;
+  --acu-pos-pale: #eef7f1;
+  --acu-neg: #a01419;
+  --acu-neg-light: #f5d4d4;
+
+  --acu-blue: #1c3a5e;
+  --acu-blue2: #1e4a7a;
+  --acu-blue-light: #d6e4f5;
+  --acu-blue-pale: #eef4fc;
+
+  --acu-ai: #5a1416;
+  --acu-ai2: #a01419;
+  --acu-ai-light: #f5d4d4;
+  --acu-ai-pale: #fcecec;
+  --acu-ai-mid: #d62828;
+
+  --acu-border: rgba(26, 15, 15, 0.12);
+  --acu-border2: rgba(26, 15, 15, 0.07);
+
+  --acu-navy: #3a0a0a;
+  --acu-spring: #d62828;
+  --acu-spring-hover: #a01419;
+
+  /* Chart gridline tint, verbatim from the booklet's Chart.js defaults */
+  --acu-grid: rgba(15, 17, 23, 0.05);
 }
 
 .dark {
@@ -135,7 +194,29 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    /* Acuvon booklet body font. Serif/alt/mono are opt-in via the
+       .acu-display / .acu-alt / .acu-mono helpers below. */
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  }
+
+  /* Acuvon booklet type roles. Class beats the bare `*` selector, so these
+     win wherever they are applied. */
+  .acu-display {
+    font-family: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+  }
+
+  .acu-alt {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .acu-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* .k-val / .dash-kv in the booklet: serif numerals, tabular figures */
+  .acu-num {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-variant-numeric: tabular-nums;
   }
 
   body {

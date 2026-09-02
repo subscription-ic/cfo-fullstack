@@ -857,9 +857,9 @@ export default function PostCallAnalysis() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="max-w-[1700px] mx-auto space-y-6">
         <div className="flex items-center justify-between">
-          <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+          <Button variant="ghost" onClick={() => navigate('/dashboard')} className="text-[1.05rem] text-[var(--acu-accent2)] hover:text-[var(--acu-accent2)] hover:bg-[var(--acu-accent-pale)] cursor-pointer">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
           </Button>
@@ -880,7 +880,7 @@ export default function PostCallAnalysis() {
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-slate-700">Company:</span>
               <Select value={selectedCompany} onValueChange={setSelectedCompany}>
-                <SelectTrigger className="w-[240px] border-[#C00000]/40">
+                <SelectTrigger className="w-[240px] border-[var(--acu-accent2)] bg-white text-[var(--acu-ink)] font-medium">
                   <SelectValue placeholder="Pick a company" />
                 </SelectTrigger>
                 <SelectContent>
@@ -903,7 +903,7 @@ export default function PostCallAnalysis() {
                 onValueChange={setSelectedQuarterKey}
                 disabled={!selectedCompany || quarters.length === 0}
               >
-                <SelectTrigger className="w-[200px] border-[#C00000]/40">
+                <SelectTrigger className="w-[200px] border-[var(--acu-accent2)] bg-white text-[var(--acu-ink)] font-medium">
                   <SelectValue placeholder="Pick a quarter" />
                 </SelectTrigger>
                 <SelectContent>
@@ -939,7 +939,7 @@ export default function PostCallAnalysis() {
           <Card className="border-slate-200">
             <CardContent className="p-4 space-y-1.5">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <Banknote className="w-3.5 h-3.5 text-[#C00000]" />
+                <Banknote className="w-3.5 h-3.5 text-[#a01419]" />
                 Avg Analyst Target
               </div>
               <div className={`text-2xl font-semibold ${kpiValueClass('neutral')}`}>
@@ -957,7 +957,7 @@ export default function PostCallAnalysis() {
           <Card className="border-slate-200">
             <CardContent className="p-4 space-y-1.5">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <Gauge className="w-3.5 h-3.5 text-[#C00000]" />
+                <Gauge className="w-3.5 h-3.5 text-[#a01419]" />
                 Net Sentiment Score
               </div>
               <div
@@ -984,7 +984,7 @@ export default function PostCallAnalysis() {
           <Card className="border-slate-200">
             <CardContent className="p-4 space-y-1.5">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <ClipboardList className="w-3.5 h-3.5 text-[#C00000]" />
+                <ClipboardList className="w-3.5 h-3.5 text-[#a01419]" />
                 Analyst Rating Mix
               </div>
               <div className={`text-2xl font-semibold ${kpiValueClass('neutral')}`}>
@@ -1002,7 +1002,7 @@ export default function PostCallAnalysis() {
           <Card className="border-slate-200">
             <CardContent className="p-4 space-y-1.5">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <TrendingUp className="w-3.5 h-3.5 text-[#C00000]" />
+                <TrendingUp className="w-3.5 h-3.5 text-[#a01419]" />
                 Positive Sentiment Share
               </div>
               <div
@@ -1026,7 +1026,7 @@ export default function PostCallAnalysis() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
-              <TrendingUp className="w-4 h-4 text-[#C00000]" />
+              <TrendingUp className="w-4 h-4 text-[#a01419]" />
               Stock Price During Quarter
             </CardTitle>
             <p className="text-xs text-slate-500 mt-1">
@@ -1080,10 +1080,10 @@ export default function PostCallAnalysis() {
                     data={stockData.prices.map((p) => ({ date: p.date, close: p.close }))}
                     margin={{ top: 8, right: 16, left: 0, bottom: 4 }}
                   >
-                    <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                    <CartesianGrid stroke="rgba(15,17,23,0.05)" strokeDasharray="3 3" />
                     <XAxis
                       dataKey="date"
-                      tick={{ fontSize: 10, fill: '#64748b' }}
+                      tick={{ fontSize: 10, fill: '#7a6262', fontFamily: 'DM Sans' }}
                       tickFormatter={(v) =>
                         new Date(v).toLocaleDateString(undefined, {
                           month: 'short',
@@ -1094,7 +1094,7 @@ export default function PostCallAnalysis() {
                     />
                     <YAxis
                       domain={['auto', 'auto']}
-                      tick={{ fontSize: 11, fill: '#64748b' }}
+                      tick={{ fontSize: 10, fill: '#7a6262', fontFamily: 'DM Sans' }}
                       tickFormatter={(v: number) => v.toFixed(0)}
                     />
                     <Tooltip
@@ -1119,17 +1119,19 @@ export default function PostCallAnalysis() {
                         <ReferenceLine
                           key={`call-${d}`}
                           x={d}
-                          stroke="#C00000"
+                          stroke="#a01419"
                           strokeDasharray="3 3"
-                          label={{ value: 'Call', fontSize: 10, fill: '#C00000', position: 'top' }}
+                          label={{ value: 'Call', fontSize: 10, fill: '#a01419', position: 'top' }}
                         />
                       ))}
+                    {/* connected scatter: a marker on every observation */}
                     <Line
                       type="monotone"
                       dataKey="close"
-                      stroke="#C00000"
+                      stroke="#a01419"
                       strokeWidth={2}
-                      dot={false}
+                      dot={{ r: 4, fill: '#a01419', stroke: '#ffffff', strokeWidth: 1.5 }}
+                      activeDot={{ r: 6, fill: '#a01419', stroke: '#ffffff', strokeWidth: 2 }}
                       isAnimationActive={false}
                     />
                   </LineChart>
@@ -1143,7 +1145,7 @@ export default function PostCallAnalysis() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
-              <Activity className="w-4 h-4 text-[#C00000]" />
+              <Activity className="w-4 h-4 text-[#a01419]" />
               Market Impact Story
             </CardTitle>
           </CardHeader>
@@ -1157,14 +1159,14 @@ export default function PostCallAnalysis() {
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={targetPriceSeries} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
-                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                      <XAxis dataKey="firm" tick={{ fontSize: 11, fill: '#64748b' }} interval={0} angle={-15} textAnchor="end" height={60} />
+                      <CartesianGrid stroke="rgba(15,17,23,0.05)" strokeDasharray="3 3" />
+                      <XAxis dataKey="firm" tick={{ fontSize: 10, fill: '#7a6262', fontFamily: 'DM Sans' }} interval={0} angle={-15} textAnchor="end" height={60} />
                       <YAxis
                         domain={['auto', 'auto']}
-                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        tick={{ fontSize: 10, fill: '#7a6262', fontFamily: 'DM Sans' }}
                       />
                       <Tooltip formatter={(v: number) => fmtINR(v)} />
-                      <Bar dataKey="target" fill="#C00000" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="target" fill="#a01419" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1181,14 +1183,14 @@ export default function PostCallAnalysis() {
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={sentimentWeeklySeries} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
-                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                      <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#64748b' }} />
-                      <YAxis domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <CartesianGrid stroke="rgba(15,17,23,0.05)" strokeDasharray="3 3" />
+                      <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#7a6262', fontFamily: 'DM Sans' }} />
+                      <YAxis domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} tick={{ fontSize: 10, fill: '#7a6262', fontFamily: 'DM Sans' }} />
                       <Tooltip />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Area type="monotone" dataKey="positive" name="Positive" stackId="1" stroke="#16a34a" fill="#bbf7d0" />
-                      <Area type="monotone" dataKey="neutral" name="Neutral" stackId="1" stroke="#94a3b8" fill="#e2e8f0" />
-                      <Area type="monotone" dataKey="negative" name="Negative" stackId="1" stroke="#C00000" fill="#fecaca" />
+                      <Area type="monotone" dataKey="positive" name="Positive" stackId="1" stroke="#2d6045" fill="#d4ead9" />
+                      <Area type="monotone" dataKey="neutral" name="Neutral" stackId="1" stroke="#7a6262" fill="#f0dfdc" />
+                      <Area type="monotone" dataKey="negative" name="Negative" stackId="1" stroke="#a01419" fill="#f5d4d4" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1198,10 +1200,10 @@ export default function PostCallAnalysis() {
         </Card>
 
         {/* AI Insight Summary — derived */}
-        <Card className="border-[#C00000]/30 bg-[#FEE2E2]/40">
+        <Card className="border-[var(--acu-ai-light)] bg-[var(--acu-ai-pale)] rounded-[10px]">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm text-[#C00000]">
-              <Sparkles className="w-4 h-4 text-[#C00000]" />
+            <CardTitle className="flex items-center gap-2 text-sm text-[#a01419]">
+              <Sparkles className="w-4 h-4 text-[#a01419]" />
               AI Insight Summary
             </CardTitle>
             <p className="text-xs text-slate-500 mt-1">
@@ -1211,7 +1213,7 @@ export default function PostCallAnalysis() {
           <CardContent className="space-y-2">
             {aiInsights.map((i) => (
               <div key={i.label} className="flex items-start gap-2 text-sm">
-                <Target className="w-3.5 h-3.5 text-[#C00000] mt-1 shrink-0" />
+                <Target className="w-3.5 h-3.5 text-[#a01419] mt-1 shrink-0" />
                 <p className="text-slate-700">
                   <span className="font-semibold text-slate-900">{i.label}:</span> {i.body}
                 </p>

@@ -78,7 +78,7 @@ const SIGNAL_ICONS: Record<string, typeof AlertTriangle> = {
   forward_looking: Eye,
 };
 
-const TOPIC_COLORS = ["#C00000", "#C00000", "#C00000", "#C00000", "#C00000"];
+const TOPIC_COLORS = ["#a01419", "#a01419", "#a01419", "#a01419", "#a01419"];
 
 export default function HistoricalIntelligenceHub() {
   const navigate = useNavigate();
@@ -213,7 +213,7 @@ export default function HistoricalIntelligenceHub() {
   // Download summary as HTML
   const handleDownloadSummary = useCallback(() => {
     if (!aiSummary || !quarterDetail) return;
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>AI Summary - ${quarterDetail.company} ${quarterDetail.quarter} FY${quarterDetail.fiscal_year}</title><style>body{font-family:system-ui;max-width:800px;margin:40px auto;padding:0 20px;color:#333}h1{color:#002850}h2{color:#C00000;border-bottom:2px solid #C00000;padding-bottom:8px}</style></head><body><h1>${quarterDetail.company} — ${quarterDetail.quarter} FY${quarterDetail.fiscal_year}</h1><h2>AI-Generated Summary</h2>${aiSummary.split("\n").map((p) => `<p>${p}</p>`).join("")}</body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>AI Summary - ${quarterDetail.company} ${quarterDetail.quarter} FY${quarterDetail.fiscal_year}</title><style>body{font-family:system-ui;max-width:800px;margin:40px auto;padding:0 20px;color:#333}h1{color:#002850}h2{color:#a01419;border-bottom:2px solid #a01419;padding-bottom:8px}</style></head><body><h1>${quarterDetail.company} — ${quarterDetail.quarter} FY${quarterDetail.fiscal_year}</h1><h2>AI-Generated Summary</h2>${aiSummary.split("\n").map((p) => `<p>${p}</p>`).join("")}</body></html>`;
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -334,14 +334,14 @@ export default function HistoricalIntelligenceHub() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="max-w-[1700px] mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <Button
               variant="ghost"
               onClick={() => navigate("/dashboard")}
-              className="mb-3 text-[#C00000] hover:text-[#C00000] hover:bg-[#FEE2E2]"
+              className="mb-3 text-[1.05rem] text-[var(--acu-accent2)] hover:text-[var(--acu-accent2)] hover:bg-[var(--acu-accent-pale)] cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Dashboard
@@ -356,13 +356,13 @@ export default function HistoricalIntelligenceHub() {
         </div>
 
         {/* Company + Quarter selectors + Apply */}
-        <Card className="border-[#C00000]/30 shadow-sm">
+        <Card className="border-[#a01419]/30 shadow-sm">
           <CardContent className="p-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-slate-700">Company:</span>
                 <Select value={selectedCompany} onValueChange={setSelectedCompany}>
-                  <SelectTrigger className="w-64 border-[#C00000]">
+                  <SelectTrigger className="w-64 border-[var(--acu-accent2)] bg-white text-[var(--acu-ink)] font-medium">
                     <SelectValue placeholder="Select a company..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -381,7 +381,7 @@ export default function HistoricalIntelligenceHub() {
                   onValueChange={setSelectedQuarterKey}
                   disabled={!selectedCompany || quarters.length === 0}
                 >
-                  <SelectTrigger className="w-56 border-[#C00000]">
+                  <SelectTrigger className="w-56 border-[var(--acu-accent2)] bg-white text-[var(--acu-ink)] font-medium">
                     <SelectValue placeholder="Select a quarter..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -399,7 +399,7 @@ export default function HistoricalIntelligenceHub() {
               <Button
                 onClick={handleApply}
                 disabled={!selectedCompany || !selectedQuarterKey || detailLoading}
-                className="bg-[#C00000] hover:bg-[#C00000] text-white px-8 disabled:opacity-50"
+                className="bg-[#a01419] hover:bg-[#a01419] text-white px-8 disabled:opacity-50"
               >
                 {detailLoading ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -418,8 +418,8 @@ export default function HistoricalIntelligenceHub() {
         {!applied && (
           <Card className="border-[#d4dce6] p-12 text-center">
             <div className="max-w-md mx-auto">
-              <div className="w-16 h-16 rounded-full bg-[#FEE2E2] flex items-center justify-center mx-auto mb-4">
-                <TrendingUp className="w-8 h-8 text-[#C00000]" />
+              <div className="w-16 h-16 rounded-full bg-[#f5d4d4] flex items-center justify-center mx-auto mb-4">
+                <TrendingUp className="w-8 h-8 text-[#a01419]" />
               </div>
               <h3 className="text-xl font-semibold text-[#002850] mb-2">
                 Select a Company and Quarter to Begin
@@ -433,52 +433,17 @@ export default function HistoricalIntelligenceHub() {
 
         {applied && (
           <>
-            {/* Key Topics Word Cloud */}
-            <Card className="border-[#C00000]/30 shadow-lg">
-              <CardHeader className="bg-gradient-to-r from-[#FEE2E2] to-white border-b border-[#d4dce6]">
-                <CardTitle className="text-[#002850] text-xl">
-                  Key Topics
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                {topicsLoading ? (
-                  <div className="h-[200px] flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-[#C00000]" />
-                  </div>
-                ) : topics.length === 0 ? (
-                  <div className="h-[200px] flex items-center justify-center text-slate-500">
-                    No topics found. Upload documents and run analysis first.
-                  </div>
-                ) : (
-                  <div className="h-[250px] bg-white rounded-lg border border-[#d4dce6]/50 flex flex-wrap items-center justify-center gap-3 p-6">
-                    {topics.map((topic, idx) => (
-                      <span
-                        key={idx}
-                        style={{
-                          fontSize: `${topic.weight * 1.2}rem`,
-                          color: TOPIC_COLORS[idx % TOPIC_COLORS.length],
-                        }}
-                        className="font-semibold hover:opacity-70 transition-opacity cursor-pointer"
-                      >
-                        {topic.text}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
             {/* Loading state */}
             {detailLoading && (
               <div className="flex justify-center py-12">
-                <Loader2 className="w-10 h-10 animate-spin text-[#C00000]" />
+                <Loader2 className="w-10 h-10 animate-spin text-[#a01419]" />
               </div>
             )}
 
             {/* AI Summary — always visible once a quarter is selected */}
             {parsedQuarter && !detailLoading && (
-              <Card className="border-[#C00000]/30 shadow-lg bg-gradient-to-br from-white to-[#FEE2E2]/30">
-                <CardHeader className="bg-gradient-to-r from-[#C00000] to-[#C00000] text-white border-b">
+              <Card className="border-[#a01419]/30 shadow-lg bg-gradient-to-br from-white to-[#f5d4d4]/30">
+                <CardHeader className="bg-gradient-to-r from-[#a01419] to-[#a01419] text-white border-b">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <CardTitle className="text-xl flex items-center gap-2">
                       <Sparkles className="w-6 h-6" />
@@ -487,7 +452,7 @@ export default function HistoricalIntelligenceHub() {
                     <Button
                       onClick={handleGenerateSummary}
                       disabled={summaryLoading}
-                      className="bg-white text-[#C00000] hover:bg-white/90 disabled:opacity-50"
+                      className="bg-white text-[#a01419] hover:bg-white/90 disabled:opacity-50"
                     >
                       {summaryLoading ? (
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -506,9 +471,10 @@ export default function HistoricalIntelligenceHub() {
                       </p>
                     ) : (
                       <p className="text-slate-500 italic">
-                        No AI summary available yet for this quarter. Upload
-                        documents for {parsedQuarter.quarter} FY
-                        {parsedQuarter.fiscal_year} and run analysis to generate one.
+                        No AI summary generated yet for {parsedQuarter.quarter} FY
+                        {parsedQuarter.fiscal_year}. Click “Generate AI Summary” above.
+                        Summaries are produced on demand and are not stored, so one
+                        must be regenerated after a reload or a change of quarter.
                       </p>
                     )}
                   </div>
@@ -517,7 +483,7 @@ export default function HistoricalIntelligenceHub() {
                       <Button
                         onClick={handleDownloadSummary}
                         size="sm"
-                        className="bg-[#C00000] hover:bg-[#C00000] text-white"
+                        className="bg-[#a01419] hover:bg-[#a01419] text-white"
                       >
                         <FileText className="w-4 h-4 mr-2" />
                         Download Full Report
@@ -548,14 +514,14 @@ export default function HistoricalIntelligenceHub() {
                 >
                   <AccordionTrigger className="px-6 hover:no-underline">
                     <div className="flex items-center gap-3">
-                      <FileText className="w-5 h-5 text-[#C00000]" />
+                      <FileText className="w-5 h-5 text-[#a01419]" />
                       <span className="font-semibold text-[#002850] text-lg">
                         Documents for {parsedQuarter.quarter} FY
                         {parsedQuarter.fiscal_year}
                       </span>
                       <Badge
                         variant="outline"
-                        className="border-[#C00000] text-[#C00000]"
+                        className="border-[#a01419] text-[#a01419]"
                       >
                         {quarterDocuments.length}
                       </Badge>
@@ -618,13 +584,13 @@ export default function HistoricalIntelligenceHub() {
                 >
                   <AccordionTrigger className="px-6 hover:no-underline">
                     <div className="flex items-center gap-3">
-                      <MessageSquare className="w-5 h-5 text-[#C00000]" />
+                      <MessageSquare className="w-5 h-5 text-[#a01419]" />
                       <span className="font-semibold text-[#002850] text-lg">
                         Questions Asked During Actual Earnings Call
                       </span>
                       <Badge
                         variant="outline"
-                        className="border-[#C00000] text-[#C00000]"
+                        className="border-[#a01419] text-[#a01419]"
                       >
                         {quarterDetail?.questions.length ?? 0}
                       </Badge>
@@ -636,7 +602,7 @@ export default function HistoricalIntelligenceHub() {
                         {quarterDetail.questions.map((q) => (
                           <div
                             key={q.id}
-                            className="p-4 bg-[#FEE2E2]/50 rounded-lg border border-[#C00000]/20"
+                            className="p-4 bg-[#f5d4d4]/50 rounded-lg border border-[#a01419]/20"
                           >
                             <div className="font-medium text-[#002850] mb-1">
                               {q.question}
@@ -675,13 +641,13 @@ export default function HistoricalIntelligenceHub() {
                 >
                   <AccordionTrigger className="px-6 hover:no-underline">
                     <div className="flex items-center gap-3">
-                      <MessageSquare className="w-5 h-5 text-[#C00000]" />
+                      <MessageSquare className="w-5 h-5 text-[#a01419]" />
                       <span className="font-semibold text-[#002850] text-lg">
                         Call Attendees
                       </span>
                       <Badge
                         variant="outline"
-                        className="border-[#C00000] text-[#C00000]"
+                        className="border-[#a01419] text-[#a01419]"
                       >
                         {quarterDetail?.attendees.length ?? 0}
                       </Badge>
@@ -698,7 +664,7 @@ export default function HistoricalIntelligenceHub() {
                           return (
                             <div
                               key={role}
-                              className="p-4 rounded-lg border border-[#C00000]/20 bg-[#FEE2E2]/30"
+                              className="p-4 rounded-lg border border-[#a01419]/20 bg-[#f5d4d4]/30"
                             >
                               <div className="text-sm font-medium text-[#002850] mb-2 capitalize">
                                 {role === "management" ? "Management" : "Analysts"}
@@ -709,7 +675,7 @@ export default function HistoricalIntelligenceHub() {
                                     key={`${role}-${idx}`}
                                     className="text-sm text-slate-700 flex items-start gap-2"
                                   >
-                                    <div className="w-1.5 h-1.5 rounded-full bg-[#C00000] mt-1.5 flex-shrink-0" />
+                                    <div className="w-1.5 h-1.5 rounded-full bg-[#a01419] mt-1.5 flex-shrink-0" />
                                     {a.name}
                                   </li>
                                 ))}
@@ -735,13 +701,13 @@ export default function HistoricalIntelligenceHub() {
                 >
                   <AccordionTrigger className="px-6 hover:no-underline">
                     <div className="flex items-center gap-3">
-                      <FileText className="w-5 h-5 text-[#C00000]" />
+                      <FileText className="w-5 h-5 text-[#a01419]" />
                       <span className="font-semibold text-[#002850] text-lg">
                         Key Discussion Themes
                       </span>
                       <Badge
                         variant="outline"
-                        className="border-[#C00000] text-[#C00000]"
+                        className="border-[#a01419] text-[#a01419]"
                       >
                         {quarterDetail?.themes.length ?? 0}
                       </Badge>
@@ -753,7 +719,7 @@ export default function HistoricalIntelligenceHub() {
                         {quarterDetail.themes.map((theme, idx) => (
                           <Badge
                             key={idx}
-                            className={`px-3 py-1.5 ${IMPORTANCE_COLORS[theme.importance] || "bg-[#FEE2E2] text-[#C00000] border-[#C00000]/30"}`}
+                            className={`px-3 py-1.5 ${IMPORTANCE_COLORS[theme.importance] || "bg-[#f5d4d4] text-[#a01419] border-[#a01419]/30"}`}
                           >
                             {theme.name}
                           </Badge>
@@ -776,13 +742,13 @@ export default function HistoricalIntelligenceHub() {
                   >
                     <AccordionTrigger className="px-6 hover:no-underline">
                       <div className="flex items-center gap-3">
-                        <AlertTriangle className="w-5 h-5 text-[#C00000]" />
+                        <AlertTriangle className="w-5 h-5 text-[#a01419]" />
                         <span className="font-semibold text-[#002850] text-lg">
                           Signals & Risks
                         </span>
                         <Badge
                           variant="outline"
-                          className="border-[#C00000] text-[#C00000]"
+                          className="border-[#a01419] text-[#a01419]"
                         >
                           {quarterDetail.signals.length}
                         </Badge>
@@ -830,7 +796,7 @@ export default function HistoricalIntelligenceHub() {
                       {quarterDetail?.sentiment.overall === "positive" ? (
                         <TrendingUp className="w-5 h-5 text-[#10b981]" />
                       ) : quarterDetail?.sentiment.overall === "negative" ? (
-                        <TrendingDown className="w-5 h-5 text-[#C00000]" />
+                        <TrendingDown className="w-5 h-5 text-[#a01419]" />
                       ) : (
                         <Minus className="w-5 h-5 text-slate-500" />
                       )}
@@ -875,8 +841,8 @@ export default function HistoricalIntelligenceHub() {
                           </div>
                         )}
                         {quarterDetail.sentiment.negative_points.length > 0 && (
-                          <div className="p-4 bg-[#C00000]/5 border border-[#C00000]/20 rounded-lg">
-                            <div className="text-sm font-medium text-[#C00000] mb-2">
+                          <div className="p-4 bg-[#a01419]/5 border border-[#a01419]/20 rounded-lg">
+                            <div className="text-sm font-medium text-[#a01419] mb-2">
                               Risks & Concerns
                             </div>
                             <ul className="space-y-1.5">
@@ -885,7 +851,7 @@ export default function HistoricalIntelligenceHub() {
                                   key={idx}
                                   className="text-sm text-slate-700 flex items-start gap-2"
                                 >
-                                  <div className="w-1.5 h-1.5 rounded-full bg-[#C00000] mt-1.5 flex-shrink-0" />
+                                  <div className="w-1.5 h-1.5 rounded-full bg-[#a01419] mt-1.5 flex-shrink-0" />
                                   {item}
                                 </li>
                               ))}
@@ -906,10 +872,10 @@ export default function HistoricalIntelligenceHub() {
             )}
 
             {/* AI Chat Assistant */}
-            <Card className="border-[#C00000]/30 shadow-lg">
-              <CardHeader className="bg-gradient-to-r from-[#FEE2E2] to-white border-b border-[#d4dce6]">
+            <Card className="border-[#a01419]/30 shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-[#f5d4d4] to-white border-b border-[#d4dce6]">
                 <CardTitle className="text-[#002850] text-xl flex items-center gap-2">
-                  <Bot className="w-6 h-6 text-[#C00000]" />
+                  <Bot className="w-6 h-6 text-[#a01419]" />
                   AI Intelligence Assistant
                 </CardTitle>
                 <p className="text-sm text-slate-600 mt-1">
@@ -928,16 +894,16 @@ export default function HistoricalIntelligenceHub() {
                           className={`flex gap-3 max-w-[85%] ${msg.type === "user" ? "flex-row-reverse" : "flex-row"}`}
                         >
                           <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.type === "user" ? "bg-[#C00000]" : "bg-gradient-to-br from-[#FEE2E2] to-[#C00000]/20 border border-[#C00000]/30"}`}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.type === "user" ? "bg-[#a01419]" : "bg-gradient-to-br from-[#f5d4d4] to-[#a01419]/20 border border-[#a01419]/30"}`}
                           >
                             {msg.type === "user" ? (
                               <User className="w-4 h-4 text-white" />
                             ) : (
-                              <Bot className="w-4 h-4 text-[#C00000]" />
+                              <Bot className="w-4 h-4 text-[#a01419]" />
                             )}
                           </div>
                           <div
-                            className={`rounded-2xl p-4 ${msg.type === "user" ? "bg-[#C00000] text-white" : "bg-white border border-[#d4dce6]"}`}
+                            className={`rounded-2xl p-4 ${msg.type === "user" ? "bg-[#a01419] text-white" : "bg-white border border-[#d4dce6]"}`}
                           >
                             <div className="text-sm leading-relaxed whitespace-pre-line">
                               {msg.text}
@@ -957,11 +923,11 @@ export default function HistoricalIntelligenceHub() {
                     {chatLoading && (
                       <div className="flex justify-start">
                         <div className="flex gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FEE2E2] to-[#C00000]/20 border border-[#C00000]/30 flex items-center justify-center">
-                            <Bot className="w-4 h-4 text-[#C00000]" />
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#f5d4d4] to-[#a01419]/20 border border-[#a01419]/30 flex items-center justify-center">
+                            <Bot className="w-4 h-4 text-[#a01419]" />
                           </div>
                           <div className="rounded-2xl p-4 bg-white border border-[#d4dce6]">
-                            <Loader2 className="w-5 h-5 animate-spin text-[#C00000]" />
+                            <Loader2 className="w-5 h-5 animate-spin text-[#a01419]" />
                           </div>
                         </div>
                       </div>
@@ -975,13 +941,13 @@ export default function HistoricalIntelligenceHub() {
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSubmit()}
                     placeholder="Ask about trends, themes, key concerns, or any earnings data..."
-                    className="flex-1 border-[#C00000]/50 focus:border-[#C00000] h-12"
+                    className="flex-1 border-[#a01419]/50 focus:border-[#a01419] h-12"
                     disabled={chatLoading}
                   />
                   <Button
                     onClick={handleChatSubmit}
                     disabled={!chatInput.trim() || chatLoading}
-                    className="bg-[#C00000] hover:bg-[#C00000] text-white px-6 h-12 disabled:opacity-50"
+                    className="bg-[#a01419] hover:bg-[#a01419] text-white px-6 h-12 disabled:opacity-50"
                   >
                     {chatLoading ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -1005,7 +971,7 @@ export default function HistoricalIntelligenceHub() {
                           `What are the key themes from ${selectedCompany}'s recent earnings?`,
                         )
                       }
-                      className="border-[#C00000]/30 text-[#C00000] text-xs hover:bg-[#FEE2E2]"
+                      className="border-[#a01419]/30 text-[#a01419] text-xs hover:bg-[#f5d4d4]"
                     >
                       <Sparkles className="w-3 h-3 mr-1.5" />
                       Key Themes
@@ -1018,7 +984,7 @@ export default function HistoricalIntelligenceHub() {
                           `Compare performance trends across the last few quarters for ${selectedCompany}`,
                         )
                       }
-                      className="border-[#C00000]/30 text-[#C00000] text-xs hover:bg-[#FEE2E2]"
+                      className="border-[#a01419]/30 text-[#a01419] text-xs hover:bg-[#f5d4d4]"
                     >
                       <TrendingUp className="w-3 h-3 mr-1.5" />
                       Compare Trends
@@ -1031,7 +997,7 @@ export default function HistoricalIntelligenceHub() {
                           `What are the main risks and concerns raised by analysts for ${selectedCompany}?`,
                         )
                       }
-                      className="border-[#C00000]/30 text-[#C00000] text-xs hover:bg-[#FEE2E2]"
+                      className="border-[#a01419]/30 text-[#a01419] text-xs hover:bg-[#f5d4d4]"
                     >
                       <MessageSquare className="w-3 h-3 mr-1.5" />
                       Key Concerns
@@ -1044,13 +1010,48 @@ export default function HistoricalIntelligenceHub() {
                           `What questions did analysts ask most frequently about ${selectedCompany}?`,
                         )
                       }
-                      className="border-[#C00000]/30 text-[#C00000] text-xs hover:bg-[#FEE2E2]"
+                      className="border-[#a01419]/30 text-[#a01419] text-xs hover:bg-[#f5d4d4]"
                     >
                       <MessageSquare className="w-3 h-3 mr-1.5" />
                       Top Questions
                     </Button>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Key Topics Word Cloud */}
+            <Card className="border-[#a01419]/30 shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-[#f5d4d4] to-white border-b border-[#d4dce6]">
+                <CardTitle className="text-[#002850] text-xl">
+                  Key Topics
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {topicsLoading ? (
+                  <div className="h-[200px] flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-[#a01419]" />
+                  </div>
+                ) : topics.length === 0 ? (
+                  <div className="h-[200px] flex items-center justify-center text-slate-500">
+                    No topics found. Upload documents and run analysis first.
+                  </div>
+                ) : (
+                  <div className="min-h-[250px] bg-white rounded-lg border border-[#d4dce6]/50 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 p-6">
+                    {topics.map((topic, idx) => (
+                      <span
+                        key={idx}
+                        style={{
+                          fontSize: `${topic.weight * 0.8}rem`,
+                          color: TOPIC_COLORS[idx % TOPIC_COLORS.length],
+                        }}
+                        className="font-semibold hover:opacity-70 transition-opacity cursor-pointer"
+                      >
+                        {topic.text}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </>

@@ -43,3 +43,11 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
+
+# ===== Client data — never push to a remote =====
+# Database exports and source documents are business data, not code.
+backups/
+uploads/
+upload_questions/*.xlsx
+upload_questions/*.xls
+*.pdf

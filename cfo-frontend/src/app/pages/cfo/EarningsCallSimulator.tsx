@@ -34,7 +34,7 @@ export default function EarningsCallSimulator() {
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
-      case 'high': return 'bg-[#C00000]/10 text-[#C00000] border-[#C00000]/20';
+      case 'high': return 'bg-[#a01419]/10 text-[#a01419] border-[#a01419]/20';
       case 'medium': return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'low': return 'bg-[#10b981]/10 text-[#10b981] border-[#10b981]/20';
       default: return 'bg-slate-100 text-slate-800';
@@ -168,7 +168,7 @@ export default function EarningsCallSimulator() {
 
           <Dialog>
             <DialogTrigger asChild>
-              <Button className="bg-[#C00000] hover:bg-[#C00000] text-white">
+              <Button className="bg-[#a01419] hover:bg-[#a01419] text-white">
                 <Mic className="w-4 h-4 mr-2" />
                 Live Rehearsal Mode
               </Button>

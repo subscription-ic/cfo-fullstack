@@ -10,6 +10,7 @@ import EarningsCallSimulator from "./pages/cfo/EarningsCallSimulator";
 import PredictionVsActual from "./pages/admin/PredictionVsActual";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import PostCallAnalysis from "./pages/PostCallAnalysis";
+import CompanyDetails from "./pages/CompanyDetails";
 import NotFound from "./pages/NotFound";
 
 export const router = createBrowserRouter([
@@ -40,6 +41,10 @@ export const router = createBrowserRouter([
   {
     path: "/post-call-analysis",
     element: <PostCallAnalysis />,
+  },
+  {
+    path: "/company-details",
+    element: <CompanyDetails />,
   },
   {
     path: "/cfo",

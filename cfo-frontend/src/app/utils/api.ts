@@ -184,6 +184,22 @@ export async function fetchDocumentCatalog(
   return res.json() as Promise<DocumentCatalogRow[]>;
 }
 
+/** Short-lived signed URL for viewing/downloading a stored document.
+ *  Read-only; requires Bearer token. */
+export async function fetchDocumentDownloadUrl(
+  documentId: string,
+  token: string
+): Promise<string> {
+  const res = await fetch(`${BASE_URL}/documents/${documentId}/download`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Download link failed (${res.status}): ${await res.text()}`);
+  }
+  const json = (await res.json()) as { url: string };
+  return json.url;
+}
+
 /** Permanently delete an uploaded document and every trace of it
  *  (storage object, vector chunks, analyses, extracted Q&A). */
 export async function deleteDocument(

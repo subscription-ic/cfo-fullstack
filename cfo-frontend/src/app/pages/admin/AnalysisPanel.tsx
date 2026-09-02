@@ -395,7 +395,7 @@ export default function AnalysisPanel({ documents, companies }: AnalysisPanelPro
               <Button
                 onClick={handleGenerateQuestions}
                 disabled={generating || !analysis.id}
-                className="bg-[#C00000] hover:bg-[#C00000] text-white"
+                className="bg-[#a01419] hover:bg-[#a01419] text-white"
               >
                 {generating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
                 {generating ? "Generating..." : "Generate 10 Questions"}

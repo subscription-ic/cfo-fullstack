@@ -16,6 +16,22 @@ def list_documents_catalog(_user: CurrentUserDep, supabase: SupabaseDep) -> list
     return [DocumentCatalogItem.model_validate(r) for r in rows]
 
 
+@router.get("/documents/{document_id}/download")
+def get_document_download_url(
+    _user: CurrentUserDep,
+    supabase: SupabaseDep,
+    document_id: str,
+) -> dict:
+    """Short-lived signed URL so the UI can view or download the stored file.
+    Read-only — nothing is modified."""
+    try:
+        return documents_service.get_download_url(supabase, document_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(
     _user: CurrentUserDep,

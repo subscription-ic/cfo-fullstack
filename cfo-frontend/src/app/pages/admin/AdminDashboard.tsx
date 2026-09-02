@@ -791,7 +791,7 @@ export default function AdminDashboard() {
                     files,
                   )
                 }
-                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#C00000] focus:border-[#C00000]"
+                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#a01419] focus:border-[#a01419]"
               >
                 {YEARS.map((y) => (
                   <option key={y} value={y}>
@@ -810,7 +810,7 @@ export default function AdminDashboard() {
                     files,
                   )
                 }
-                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#C00000] focus:border-[#C00000]"
+                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#a01419] focus:border-[#a01419]"
               >
                 {QUARTERS.map((q) => (
                   <option key={q} value={q}>
@@ -829,7 +829,7 @@ export default function AdminDashboard() {
                     files,
                   )
                 }
-                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#C00000] focus:border-[#C00000]"
+                className="text-sm border-slate-200 rounded-md py-1.5 px-3 focus:ring-[#a01419] focus:border-[#a01419]"
               >
                 {DOC_TYPES.map((d) => (
                   <option key={d} value={d}>
@@ -1108,7 +1108,7 @@ export default function AdminDashboard() {
 
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-xl text-[#C00000]">
+                <CardTitle className="text-xl text-[#a01419]">
                   Actual Questions Review
                 </CardTitle>
                 <CardDescription>
@@ -1251,7 +1251,7 @@ export default function AdminDashboard() {
 
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-xl text-[#C00000]">
+                <CardTitle className="text-xl text-[#a01419]">
                   Predicted Questions Review
                 </CardTitle>
                 <CardDescription>
@@ -1379,7 +1379,7 @@ export default function AdminDashboard() {
 
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-xl text-[#C00000]">
+                <CardTitle className="text-xl text-[#a01419]">
                   Predicted vs Actual Questions Comparison
                 </CardTitle>
                 <CardDescription>
@@ -1602,7 +1602,7 @@ export default function AdminDashboard() {
                 </Button>
                 <Button
                   onClick={handleSaveQuestion}
-                  className="bg-[#C00000] hover:bg-[#C00000] text-white"
+                  className="bg-[#a01419] hover:bg-[#a01419] text-white"
                 >
                   {isAddMode ? "Add Record" : "Save Changes"}
                 </Button>
@@ -1616,7 +1616,7 @@ export default function AdminDashboard() {
             {/* Section 1: Company Name */}
             <Card className="border-slate-200">
               <CardHeader>
-                <CardTitle className="text-xl text-[#C00000]">
+                <CardTitle className="text-xl text-[#a01419]">
                   Company Profile
                 </CardTitle>
                 <CardDescription>
@@ -1636,7 +1636,7 @@ export default function AdminDashboard() {
                   >
                     <SelectTrigger
                       id="company-select"
-                      className="border-slate-200 focus:border-[#C00000] focus:ring-[#C00000]"
+                      className="border-slate-200 focus:border-[#a01419] focus:ring-[#a01419]"
                     >
                       <SelectValue placeholder="Select a company…" />
                     </SelectTrigger>
@@ -1667,12 +1667,12 @@ export default function AdminDashboard() {
                           setNewCompanyInput("");
                         }
                       }}
-                      className="focus:border-[#C00000] focus:ring-[#C00000] sm:flex-1"
+                      className="focus:border-[#a01419] focus:ring-[#a01419] sm:flex-1"
                     />
                     <Button
                       type="button"
                       variant="secondary"
-                      className="shrink-0 border border-[#C00000]/30 text-[#C00000]"
+                      className="shrink-0 border border-[#a01419]/30 text-[#a01419]"
                       onClick={() => {
                         useNewCompanyName(newCompanyInput);
                         setNewCompanyInput("");
@@ -1700,7 +1700,7 @@ export default function AdminDashboard() {
                 <Card className="border-slate-200">
                   <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <CardTitle className="flex items-center gap-2 text-xl text-[#C00000]">
+                      <CardTitle className="flex items-center gap-2 text-xl text-[#a01419]">
                         <FileText className="h-5 w-5 shrink-0" />
                         Ingested documents
                       </CardTitle>
@@ -1713,7 +1713,7 @@ export default function AdminDashboard() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="border-[#C00000]/40 text-[#C00000] shrink-0"
+                      className="border-[#a01419]/40 text-[#a01419] shrink-0"
                       onClick={() => void loadDocumentCatalog()}
                       disabled={documentsLoading || !getAccessToken()}
                     >
@@ -1732,12 +1732,12 @@ export default function AdminDashboard() {
                       </div>
                     ) : documentsLoading ? (
                       <div className="flex items-center justify-center gap-2 py-16 text-slate-600 text-sm">
-                        <Loader2 className="h-5 w-5 animate-spin text-[#C00000]" />
+                        <Loader2 className="h-5 w-5 animate-spin text-[#a01419]" />
                         Loading documents…
                       </div>
                     ) : !companyName.trim() ? (
                       <div className="rounded-lg border border-dashed border-slate-200 p-5 text-sm text-slate-700 bg-slate-50/60">
-                        <p className="font-medium text-[#C00000] mb-1">Select a company</p>
+                        <p className="font-medium text-[#a01419] mb-1">Select a company</p>
                         <p>
                           Choose a company in <strong>Company Profile</strong> to see ingested
                           documents for that company only.
@@ -1796,7 +1796,7 @@ export default function AdminDashboard() {
                                         type="button"
                                         variant="ghost"
                                         size="sm"
-                                        className="text-[#C00000] hover:bg-red-50 hover:text-[#C00000]"
+                                        className="text-[#a01419] hover:bg-red-50 hover:text-[#a01419]"
                                         onClick={() =>
                                           void handleDeleteQuarter(
                                             group.fiscal_year,
@@ -1839,7 +1839,7 @@ export default function AdminDashboard() {
                                             type="button"
                                             variant="ghost"
                                             size="sm"
-                                            className="text-[#C00000] hover:bg-red-50 hover:text-[#C00000]"
+                                            className="text-[#a01419] hover:bg-red-50 hover:text-[#a01419]"
                                             onClick={() =>
                                               void handleDeleteHistoricalDocument(row.id, label)
                                             }
@@ -1870,7 +1870,7 @@ export default function AdminDashboard() {
               <TabsContent value="current" className="space-y-6 mt-4">
                 <Card className="border-slate-200">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-xl text-[#C00000]">
+                    <CardTitle className="flex items-center gap-2 text-xl text-[#a01419]">
                       <FileSpreadsheet className="h-5 w-5" />
                       Current Documents
                     </CardTitle>
@@ -1883,7 +1883,7 @@ export default function AdminDashboard() {
                         type="button"
                         variant="outline"
                         onClick={() => {}}
-                        className="border-[#C00000] text-[#C00000] hover:bg-[#FFE8EA]"
+                        className="border-[#a01419] text-[#a01419] hover:bg-[#fcecec]"
                       >
                         Fetch All Documents
                       </Button>
@@ -1910,10 +1910,10 @@ export default function AdminDashboard() {
                         htmlFor="upload-current-docs"
                         className="cursor-pointer flex flex-col items-center"
                       >
-                        <div className="h-12 w-12 rounded-full bg-[#C00000]/10 flex items-center justify-center mb-4">
-                          <Upload className="h-6 w-6 text-[#C00000]" />
+                        <div className="h-12 w-12 rounded-full bg-[#a01419]/10 flex items-center justify-center mb-4">
+                          <Upload className="h-6 w-6 text-[#a01419]" />
                         </div>
-                        <span className="font-medium text-[#C00000]">
+                        <span className="font-medium text-[#a01419]">
                           Browse all files
                         </span>
                         <span className="text-sm text-slate-500 mt-1">
@@ -1952,7 +1952,7 @@ export default function AdminDashboard() {
               <Button
                 onClick={handleSave}
                 disabled={!isFormValid || uploadSubmitting}
-                className="bg-[#C00000] hover:bg-[#C00000] text-white px-8 py-6 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all font-medium disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+                className="bg-[#a01419] hover:bg-[#a01419] text-white px-8 py-6 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all font-medium disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
               >
                 {uploadSubmitting ? (
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
@@ -1965,7 +1965,7 @@ export default function AdminDashboard() {
 
             <Card className="border-slate-200 mb-10">
               <CardHeader>
-                <CardTitle className="text-xl text-[#C00000]">
+                <CardTitle className="text-xl text-[#a01419]">
                   Ingestion Summary
                 </CardTitle>
                 <CardDescription>

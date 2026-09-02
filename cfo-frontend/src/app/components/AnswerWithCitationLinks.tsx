@@ -57,7 +57,7 @@ export function AnswerWithCitationLinks({
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-[#C00000] underline underline-offset-2 text-[13px] font-semibold"
+        className="text-[#a01419] underline underline-offset-2 text-[13px] font-semibold"
         title={`Open source PDF at this page (${bestKey})`}
       >
         {label ? `[${label}]` : `[${bestKey}]`}

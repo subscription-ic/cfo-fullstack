@@ -322,9 +322,9 @@ export default function EarningsCallStrategist() {
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
-      case 'high': return 'bg-[#C00000]/10 text-[#C00000] border-[#C00000]/20';
+      case 'high': return 'bg-[#a01419]/10 text-[#a01419] border-[#a01419]/20';
       case 'medium': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'low': return 'bg-[#10b981]/10 text-[#10b981] border-[#10b981]/20';
+      case 'low': return 'bg-[#16a34a]/10 text-[#16a34a] border-[#16a34a]/20';
       default: return 'bg-slate-100 text-slate-800';
     }
   };
@@ -381,16 +381,16 @@ export default function EarningsCallStrategist() {
           <title>Earnings Call Cheat Sheet</title>
           <style>
             body { font-family: Montserrat, sans-serif; padding: 40px; max-width: 1000px; margin: 0 auto; background: #f8fafc; }
-            h1 { color: #C00000; border-bottom: 3px solid #C00000; padding-bottom: 10px; margin-bottom: 30px; }
-            .meta { background: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #C00000; }
+            h1 { color: #a01419; border-bottom: 3px solid #a01419; padding-bottom: 10px; margin-bottom: 30px; }
+            .meta { background: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #a01419; }
             .question { margin: 20px 0; padding: 25px; border: 1px solid #d4dce6; border-radius: 8px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-            .question h3 { color: #C00000; margin-top: 0; font-size: 16px; }
-            .answer { background: #FFE8EA; padding: 18px; border-radius: 6px; margin-top: 15px; line-height: 1.6; }
+            .question h3 { color: #a01419; margin-top: 0; font-size: 16px; }
+            .answer { background: #fcecec; padding: 18px; border-radius: 6px; margin-top: 15px; line-height: 1.6; }
             .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-right: 8px; }
-            .high { background: #C00000; color: white; }
+            .high { background: #a01419; color: white; }
             .medium { background: #fbbf24; color: #78350f; }
-            .low { background: #10b981; color: white; }
-            .custom { background: #C00000; color: white; }
+            .low { background: #16a34a; color: white; }
+            .custom { background: #a01419; color: white; }
           </style>
         </head>
         <body>
@@ -441,7 +441,7 @@ export default function EarningsCallStrategist() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6 flex items-center justify-center">
         <div className="text-center space-y-4">
-          <Loader2 className="w-10 h-10 text-[#C00000] animate-spin mx-auto" />
+          <Loader2 className="w-10 h-10 text-[#a01419] animate-spin mx-auto" />
           <p className="text-slate-600 font-medium">Loading questions from database…</p>
         </div>
       </div>
@@ -453,13 +453,13 @@ export default function EarningsCallStrategist() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6 flex items-center justify-center">
         <div className="text-center space-y-4 max-w-md">
-          <AlertCircle className="w-10 h-10 text-[#C00000] mx-auto" />
-          <h2 className="text-xl font-semibold text-[#C00000]">Failed to load questions</h2>
+          <AlertCircle className="w-10 h-10 text-[#a01419] mx-auto" />
+          <h2 className="text-xl font-semibold text-[#a01419]">Failed to load questions</h2>
           <p className="text-slate-600 text-sm">{error}</p>
           <p className="text-slate-500 text-xs">Make sure the FastAPI backend is running on port 8000.</p>
           <Button
             onClick={() => window.location.reload()}
-            className="bg-[#C00000] hover:bg-[#C00000] text-white"
+            className="bg-[#a01419] hover:bg-[#a01419] text-white"
           >
             Retry
           </Button>
@@ -472,22 +472,22 @@ export default function EarningsCallStrategist() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="max-w-[1700px] mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <Button 
               variant="ghost" 
               onClick={() => navigate('/dashboard')}
-              className="mb-3 text-[#C00000] hover:text-[#C00000] hover:bg-[#FFE8EA]"
+              className="mb-3 text-[1.05rem] text-[var(--acu-accent2)] hover:text-[var(--acu-accent2)] hover:bg-[var(--acu-accent-pale)] cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Dashboard
             </Button>
-            <h1 className="text-3xl font-semibold text-[#C00000] mb-2">Earnings Call Simulator</h1>
+            <h1 className="text-3xl font-semibold text-[#a01419] mb-2">Earnings Call Simulator</h1>
             <p className="text-slate-600">Prepare for tough questions with AI-predicted scenarios</p>
             {questions.some((q) => q.ragLoading) && (
-              <p className="text-sm text-[#C00000] mt-2 flex items-center gap-2">
+              <p className="text-sm text-[#a01419] mt-2 flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                 Grounding CFO-style answers from uploaded documents (hybrid search + rerank)…
               </p>
@@ -503,7 +503,7 @@ export default function EarningsCallStrategist() {
                     setSelectedCompany(v === '__all__' ? '' : v)
                   }
                 >
-                  <SelectTrigger className="w-[240px] border-[#C00000]/40">
+                  <SelectTrigger className="w-[240px] border-[var(--acu-accent2)] bg-white text-[var(--acu-ink)] font-medium">
                     <SelectValue placeholder="All companies" />
                   </SelectTrigger>
                   <SelectContent>
@@ -535,7 +535,7 @@ export default function EarningsCallStrategist() {
                         }
                       }}
                     >
-                      <SelectTrigger className="w-[200px] border-[#C00000]/40">
+                      <SelectTrigger className="w-[200px] border-[var(--acu-accent2)] bg-white text-[var(--acu-ink)] font-medium">
                         <SelectValue placeholder="All periods" />
                       </SelectTrigger>
                       <SelectContent>
@@ -555,6 +555,15 @@ export default function EarningsCallStrategist() {
               </div>
             )}
           </div>
+          {/* Performance Debrief lives here rather than on the dashboard card */}
+          <button
+            type="button"
+            onClick={() => navigate('/debrief')}
+            className="shrink-0 mt-1 flex items-center gap-2 rounded-md border border-[var(--acu-accent2)] bg-white px-4 h-10 text-[0.95rem] font-medium text-[var(--acu-accent2)] cursor-pointer transition-colors duration-200 hover:bg-[var(--acu-accent2)] hover:text-white"
+          >
+            <span className="text-[0.9rem] leading-none">◎</span>
+            Performance Debrief
+          </button>
         </div>
 
         {emptyDb && (
@@ -574,7 +583,7 @@ export default function EarningsCallStrategist() {
         <div className="space-y-6">
           {/* File Upload Section */}
           <Card className="border-[#ED232A]/30 shadow-sm">
-            <CardHeader className="bg-gradient-to-r from-[#FFE8EA] to-white border-b border-[#d4dce6]">
+            <CardHeader className="bg-gradient-to-r from-[#fcecec] to-white border-b border-[#d4dce6]">
               <div className="flex justify-between items-start">
                 <div>
                   <CardTitle className="text-[#8B1319]">Upload Documents for AI Prediction</CardTitle>
@@ -583,7 +592,7 @@ export default function EarningsCallStrategist() {
                 <div className="w-[300px]">
                   <Label className="text-xs font-semibold text-[#8B1319] mb-1 block">Target Company</Label>
                   <Select value={selectedCompany} onValueChange={setSelectedCompany}>
-                    <SelectTrigger className="bg-white border-[#ED232A]/30">
+                    <SelectTrigger className="border-[var(--acu-accent2)] bg-white text-[var(--acu-ink)] font-medium">
                       <SelectValue placeholder="Select a company" />
                     </SelectTrigger>
                     <SelectContent>
@@ -684,7 +693,7 @@ export default function EarningsCallStrategist() {
                 </Button>
                 <Button 
                   onClick={handleGeneratePredictions}
-                  className="bg-[#ED232A] hover:bg-[#C11B22] text-white font-medium"
+                  className="bg-[#ED232A] hover:bg-[#a01419] text-white font-medium"
                   disabled={loading}
                 >
                   {loading ? (
@@ -699,9 +708,9 @@ export default function EarningsCallStrategist() {
 
           <div className="grid lg:grid-cols-3 gap-6">
           {/* Left: Predicted Questions List */}
-          <Card className="lg:col-span-2 border-[#C00000]/30 shadow-lg">
-            <CardHeader className="bg-gradient-to-r from-[#FFE8EA] to-white border-b border-[#d4dce6]">
-              <CardTitle className="text-[#C00000] text-xl">
+          <Card className="lg:col-span-2 border-[#a01419]/30 shadow-lg">
+            <CardHeader className="bg-gradient-to-r from-[#fcecec] to-white border-b border-[#d4dce6]">
+              <CardTitle className="text-[#a01419] text-xl">
                 AI-Predicted Questions
               </CardTitle>
               <p className="text-sm text-slate-600 mt-2">
@@ -710,18 +719,18 @@ export default function EarningsCallStrategist() {
               
               {/* Add Custom Question Input */}
               <div className="mt-4 space-y-2">
-                <div className="text-sm font-medium text-[#C00000]">Add Custom Question</div>
+                <div className="text-sm font-medium text-[#a01419]">Add Custom Question</div>
                 <div className="flex gap-2">
                   <Input
                     value={newCustomQuestion}
                     onChange={(e) => setNewCustomQuestion(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddCustomQuestion()}
                     placeholder="Type your custom question here..."
-                    className="flex-1 border-[#C00000]/50 focus:border-[#C00000]"
+                    className="flex-1 border-[#a01419]/50 focus:border-[#a01419]"
                   />
                   <Button 
                     onClick={handleAddCustomQuestion}
-                    className="bg-[#C00000] hover:bg-[#C00000] text-white"
+                    className="bg-[#a01419] hover:bg-[#a01419] text-white"
                     size="sm"
                   >
                     <Plus className="w-4 h-4" />
@@ -742,9 +751,9 @@ export default function EarningsCallStrategist() {
                       key={q.id} 
                       className={`border transition-all ${
                         q.status === 'retained' 
-                          ? 'border-[#10b981] bg-[#10b981]/5' 
+                          ? 'border-[#16a34a] bg-[#16a34a]/5' 
                           : q.status === 'rejected'
-                          ? 'border-[#C00000]/30 bg-[#C00000]/5 opacity-60'
+                          ? 'border-[#a01419]/30 bg-[#a01419]/5 opacity-60'
                           : 'border-[#d4dce6] bg-white'
                       }`}
                     >
@@ -753,15 +762,15 @@ export default function EarningsCallStrategist() {
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="outline" className="text-xs font-semibold text-[#C00000] border-[#C00000]">
+                              <Badge variant="outline" className="text-xs font-semibold text-[#a01419] border-[#a01419]">
                                 Q{idx + 1}
                               </Badge>
                               {q.categoryL1 ? (
-                                <Badge variant="outline" className="text-xs border-[#C00000] text-[#C00000]">
+                                <Badge variant="outline" className="text-xs border-[#a01419] text-[#a01419]">
                                   {q.categoryL1}
                                 </Badge>
                               ) : (
-                                <Badge variant="outline" className="text-xs border-[#C00000] text-[#C00000]">
+                                <Badge variant="outline" className="text-xs border-[#a01419] text-[#a01419]">
                                   {q.category}
                                 </Badge>
                               )}
@@ -774,12 +783,12 @@ export default function EarningsCallStrategist() {
                                 {q.riskLevel}
                               </Badge>
                               {q.isCustom && (
-                                <Badge className="text-xs bg-[#C00000] text-white">
+                                <Badge className="text-xs bg-[#a01419] text-white">
                                   Custom
                                 </Badge>
                               )}
                             </div>
-                            <div className="font-medium text-[#C00000] text-sm leading-relaxed">
+                            <div className="font-medium text-[#a01419] text-sm leading-relaxed">
                               {q.question}
                             </div>
                             {q.ragLoading && (
@@ -797,23 +806,23 @@ export default function EarningsCallStrategist() {
                             size="sm"
                             onClick={() => handleRetain(q.id)}
                             disabled={q.status === 'retained'}
-                            className={`flex-1 ${
+                            className={`flex-1 font-semibold cursor-pointer ${
                               q.status === 'retained'
-                                ? 'bg-[#10b981] hover:bg-[#10b981]'
-                                : 'bg-[#10b981]/10 text-[#10b981] hover:bg-[#10b981] hover:text-white'
+                                ? 'bg-[#16a34a] hover:bg-[#16a34a] text-white'
+                                : 'bg-[#16a34a]/15 text-[#16a34a] border border-[#16a34a]/40 hover:bg-[#16a34a] hover:text-white'
                             }`}
                           >
                             <Check className="w-4 h-4 mr-1.5" />
-                            {q.status === 'retained' ? 'Retained' : 'Retain'}
+                            {q.status === 'retained' ? 'Retained' : 'Accept'}
                           </Button>
                           <Button
                             size="sm"
                             onClick={() => handleReject(q.id)}
                             disabled={q.status === 'rejected'}
-                            className={`flex-1 ${
+                            className={`flex-1 font-semibold cursor-pointer ${
                               q.status === 'rejected'
-                                ? 'bg-[#C00000] hover:bg-[#C00000]'
-                                : 'bg-[#C00000]/10 text-[#C00000] hover:bg-[#C00000] hover:text-white'
+                                ? 'bg-[#a01419] hover:bg-[#a01419] text-white'
+                                : 'bg-[#a01419]/15 text-[#a01419] border border-[#a01419]/40 hover:bg-[#a01419] hover:text-white'
                             }`}
                           >
                             <X className="w-4 h-4 mr-1.5" />
@@ -827,15 +836,15 @@ export default function EarningsCallStrategist() {
                           onOpenChange={(open) => handleQuestionOpenChange(q, open)}
                         >
                           <CollapsibleTrigger
-                            className="w-full flex items-center justify-between p-3 bg-[#FFE8EA]/50 hover:bg-[#FFE8EA] rounded-lg transition-colors"
+                            className="w-full flex items-center justify-between p-3 bg-[#fcecec]/50 hover:bg-[#fcecec] rounded-lg transition-colors"
                           >
-                            <span className="text-sm font-medium text-[#C00000]">
+                            <span className="text-sm font-medium text-[#a01419]">
                               View suggested answer (from uploaded documents)
                             </span>
                             {openQuestions.includes(q.id) ? (
-                              <ChevronUp className="w-4 h-4 text-[#C00000]" />
+                              <ChevronUp className="w-4 h-4 text-[#a01419]" />
                             ) : (
-                              <ChevronDown className="w-4 h-4 text-[#C00000]" />
+                              <ChevronDown className="w-4 h-4 text-[#a01419]" />
                             )}
                           </CollapsibleTrigger>
                           <CollapsibleContent className="mt-3">
@@ -856,7 +865,7 @@ export default function EarningsCallStrategist() {
                               )}
                               {!q.ragLoading && (
                                 <>
-                                  <div className="text-sm font-medium text-[#C00000]">
+                                  <div className="text-sm font-medium text-[#a01419]">
                                     Suggested answer
                                   </div>
                                   <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
@@ -890,7 +899,7 @@ export default function EarningsCallStrategist() {
                                                 href={s.pdf_url}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-xs font-semibold text-[#C00000] hover:underline"
+                                                className="text-xs font-semibold text-[#a01419] hover:underline"
                                               >
                                                 {s.filename ?? s.label}
                                                 {s.page_number != null
@@ -933,8 +942,8 @@ export default function EarningsCallStrategist() {
           </Card>
 
           {/* Right: Cheat Sheet Preview */}
-          <Card className="lg:col-span-1 border-[#C00000]/30 shadow-lg h-fit sticky top-6">
-            <CardHeader className="bg-gradient-to-r from-[#C00000] to-[#C00000] text-white">
+          <Card className="lg:col-span-1 border-[#a01419]/30 shadow-lg h-fit sticky top-6">
+            <CardHeader className="bg-gradient-to-r from-[#a01419] to-[#a01419] text-white">
               <CardTitle className="text-xl flex items-center gap-2">
                 <FileText className="w-5 h-5" />
                 Prep Cheat Sheet
@@ -943,13 +952,13 @@ export default function EarningsCallStrategist() {
             <CardContent className="p-6 space-y-4">
               {/* Stats */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-[#FFE8EA] rounded-lg">
+                <div className="p-3 bg-[#fcecec] rounded-lg">
                   <div className="text-xs text-slate-600">Questions</div>
-                  <div className="text-2xl font-semibold text-[#C00000]">{retainedCount}</div>
+                  <div className="text-2xl font-semibold text-[#a01419]">{retainedCount}</div>
                 </div>
-                <div className="p-3 bg-[#FFE8EA] rounded-lg">
+                <div className="p-3 bg-[#fcecec] rounded-lg">
                   <div className="text-xs text-slate-600">Custom</div>
-                  <div className="text-2xl font-semibold text-[#C00000]">
+                  <div className="text-2xl font-semibold text-[#a01419]">
                     {retainedQuestions.filter(q => q.isCustom).length}
                   </div>
                 </div>
@@ -957,7 +966,7 @@ export default function EarningsCallStrategist() {
 
               {/* Retained Questions List */}
               <div>
-                <div className="text-sm font-medium text-[#C00000] mb-3">Retained Questions:</div>
+                <div className="text-sm font-medium text-[#a01419] mb-3">Retained Questions:</div>
                 {retainedCount === 0 ? (
                   <div className="text-center py-8 text-slate-500 text-sm">
                     No questions retained yet. Click "Retain" on questions above to add them to your cheat sheet.
@@ -966,17 +975,17 @@ export default function EarningsCallStrategist() {
                   <ScrollArea className="h-[400px]">
                     <div className="space-y-2">
                       {retainedQuestions.map((q, idx) => (
-                        <div key={q.id} className="p-3 bg-[#FFE8EA] rounded-lg border border-[#C00000]/20">
+                        <div key={q.id} className="p-3 bg-[#fcecec] rounded-lg border border-[#a01419]/20">
                           <div className="flex items-start gap-2">
-                            <div className="text-xs font-semibold text-[#C00000] mt-0.5">
+                            <div className="text-xs font-semibold text-[#a01419] mt-0.5">
                               {idx + 1}.
                             </div>
                             <div className="flex-1">
-                              <div className="text-xs text-[#C00000] leading-relaxed">
+                              <div className="text-xs text-[#a01419] leading-relaxed">
                                 {q.question}
                               </div>
                               {q.isCustom && (
-                                <Badge className="text-xs bg-[#C00000] text-white mt-1.5">
+                                <Badge className="text-xs bg-[#a01419] text-white mt-1.5">
                                   Custom
                                 </Badge>
                               )}
@@ -993,7 +1002,7 @@ export default function EarningsCallStrategist() {
               <Button 
                 onClick={handleDownloadCheatSheet}
                 disabled={retainedCount === 0}
-                className="w-full bg-[#C00000] hover:bg-[#C00000] text-white disabled:opacity-50"
+                className="w-full bg-[#a01419] hover:bg-[#a01419] text-white disabled:opacity-50"
               >
                 <FileText className="w-4 h-4 mr-2" />
                 Download Cheat Sheet ({retainedCount})
@@ -1007,9 +1016,9 @@ export default function EarningsCallStrategist() {
           </Card>
 
           {/* Top source snippets — aggregated across visible questions */}
-          <Card className="lg:col-span-1 border-[#C00000]/30 shadow-lg h-fit">
-            <CardHeader className="bg-gradient-to-r from-[#FFE8EA] to-white border-b border-[#d4dce6]">
-              <CardTitle className="text-[#C00000] text-lg flex items-center gap-2">
+          <Card className="lg:col-span-1 border-[#a01419]/30 shadow-lg h-fit">
+            <CardHeader className="bg-gradient-to-r from-[#fcecec] to-white border-b border-[#d4dce6]">
+              <CardTitle className="text-[#a01419] text-lg flex items-center gap-2">
                 <FileText className="w-4 h-4" />
                 Top source snippets
               </CardTitle>
@@ -1036,7 +1045,7 @@ export default function EarningsCallStrategist() {
                         className="text-xs bg-slate-50 rounded p-2 border border-slate-100"
                       >
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="text-[10px] font-semibold text-[#C00000]">
+                          <span className="text-[10px] font-semibold text-[#a01419]">
                             #{idx + 1}
                           </span>
                           {s.pdf_url ? (
@@ -1044,7 +1053,7 @@ export default function EarningsCallStrategist() {
                               href={s.pdf_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-xs font-semibold text-[#C00000] hover:underline"
+                              className="text-xs font-semibold text-[#a01419] hover:underline"
                             >
                               {s.filename ?? s.label}
                               {s.page_number != null
