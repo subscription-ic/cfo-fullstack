@@ -16,7 +16,7 @@ from typing import Any
 
 from supabase import Client
 
-from app.infrastructure.llm import chat_completion
+from app.infrastructure.llm import extraction_completion
 from app.shared.constants import (
     CATEGORY_TAXONOMY_QUESTION_PROMPT,
     EXPERT_PERSONA,
@@ -144,7 +144,9 @@ def extract_analyst_qa(transcript_text: str) -> list[dict[str, Any]]:
     if not transcript_text.strip():
         return []
     user_prompt = EXTRACTION_USER_TEMPLATE.format(transcript=_truncate_transcript(transcript_text))
-    raw = chat_completion(
+    # Cheap tier: ~17k input tokens per transcript, and the Q&A pairs are read
+    # straight off the page rather than reasoned about.
+    raw = extraction_completion(
         messages=[
             {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -340,7 +342,10 @@ def judge_similarity(
         return None, 0.0, "No predicted questions available for this company."
     lines = [f"{i}: {c.get('predicted_question', '')}" for i, c in enumerate(candidates)]
     user_prompt = JUDGE_USER_TEMPLATE.format(actual=actual_question, candidates="\n".join(lines))
-    raw = chat_completion(
+    # Cheap tier: called once per extracted analyst question, so a single
+    # transcript fans out to 30+ calls — the second-highest-volume site after
+    # per-page analysis. See SIMILARITY_LINK_THRESHOLD note below.
+    raw = extraction_completion(
         messages=[
             {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},

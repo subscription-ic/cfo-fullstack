@@ -36,7 +36,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.infrastructure.llm import chat_completion
+from app.infrastructure.llm import extraction_completion
 from app.shared.constants import (
     CATEGORY_TAXONOMY_PAGE_PROMPT,
     EXPERT_PERSONA,
@@ -286,7 +286,8 @@ def analyze_page(page_text: str, page_number: int, company: str = "") -> PageAna
         {"role": "user", "content": _build_user_prompt(page_text, page_number, company)},
     ]
     try:
-        raw = chat_completion(messages, temperature=0.2)
+        # Cheap tier: one call per page, so this is the dominant ingestion cost.
+        raw = extraction_completion(messages, temperature=0.2)
     except Exception:
         return PageAnalysis()
     return _coerce_analysis(_extract_json_object(raw))

@@ -26,7 +26,11 @@ from app.modules.ingestion.enrichment import (
 )
 from app.modules.ingestion.schemas import FileUploadResult
 from app.modules.ingestion.summarization import PageAnalysis, analyze_pages
-from app.modules.ingestion.text_extraction import extract_pdf_pages
+from app.modules.ingestion.text_extraction import (
+    extract_pdf_pages,
+    extract_xlsx_sheets,
+    is_xlsx_name,
+)
 from app.shared.constants import (
     PAGE_CHUNK_MAX_CHARS,
     RESEARCH_DOC_TYPES,
@@ -137,6 +141,7 @@ def reingest_document(supabase: Client, document_id: str) -> dict[str, Any]:
     ct_lower = (content_type or "").lower()
     is_pdf = fn_lower.endswith(".pdf") or "pdf" in ct_lower
     is_txt = fn_lower.endswith(".txt") or ct_lower.startswith("text/plain")
+    is_xlsx = is_xlsx_name(filename, content_type)
 
     file_ref = document_file_ref(document_id)
     citation_stem = safe_citation_stem(filename)
@@ -167,11 +172,11 @@ def reingest_document(supabase: Client, document_id: str) -> dict[str, Any]:
                 "topics": detect_topics(piece),
                 "importance": importance_score(piece),
             })
-    elif is_pdf:
-        pages = extract_pdf_pages(raw)
+    elif is_pdf or is_xlsx:
+        pages = extract_pdf_pages(raw) if is_pdf else extract_xlsx_sheets(raw)
         if not pages:
             return {"ok": False, "chunks_deleted": deleted_count, "chunks_inserted": 0,
-                    "error": "no extractable text (image-only PDF?)"}
+                    "error": "no extractable text (image-only PDF? empty workbook?)"}
         page_analyses = analyze_pages(pages, company=company)
         for page_num, page_text in pages:
             page_text = page_text.strip()
@@ -331,6 +336,7 @@ def process_upload_file(
         ct = (upload.content_type or "").lower()
         is_pdf = fn_lower.endswith(".pdf") or "pdf" in ct
         is_txt = fn_lower.endswith(".txt") or ct.startswith("text/plain")
+        is_xlsx = is_xlsx_name(filename, upload.content_type)
 
         doc_id = str(uuid.uuid4())
         file_ref = document_file_ref(doc_id)
@@ -365,17 +371,27 @@ def process_upload_file(
                         "importance": importance_score(piece),
                     }
                 )
-        elif is_pdf:
-            pages = extract_pdf_pages(raw)
+        elif is_pdf or is_xlsx:
+            # Both formats yield [(page_number, text)]. A workbook's sheets are
+            # treated as pages so citations and per-page analysis work unchanged.
+            if is_pdf:
+                pages = extract_pdf_pages(raw)
+                empty_error = (
+                    "No extractable text — the PDF appears to be image-only "
+                    "(scanned). Install Tesseract OCR on the server or "
+                    "upload a text-based PDF."
+                )
+            else:
+                pages = extract_xlsx_sheets(raw)
+                empty_error = (
+                    "No extractable content — every sheet in the workbook is "
+                    "empty, or the file is a legacy .xls (re-save as .xlsx)."
+                )
             if not pages:
                 return FileUploadResult(
                     filename=filename,
                     ok=False,
-                    error=(
-                        "No extractable text — the PDF appears to be image-only "
-                        "(scanned). Install Tesseract OCR on the server or "
-                        "upload a text-based PDF."
-                    ),
+                    error=empty_error,
                 )
             page_analyses = analyze_pages(pages, company=company)
             # Page-level chunking: each PDF page is one chunk. Preserves citation
@@ -409,7 +425,7 @@ def process_upload_file(
                         }
                     )
         else:
-            return FileUploadResult(filename=filename, ok=False, error="Unsupported file type (use PDF or TXT)")
+            return FileUploadResult(filename=filename, ok=False, error="Unsupported file type (use PDF, TXT, or XLSX)")
 
         if not chunk_records:
             return FileUploadResult(filename=filename, ok=False, error="No chunks after extraction")

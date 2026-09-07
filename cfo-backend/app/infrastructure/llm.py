@@ -29,13 +29,23 @@ def embed_query(text: str) -> list[float]:
     return embed_texts([text])[0]
 
 
-def chat_completion(messages: list[dict[str, Any]], temperature: float = 0.4) -> str:
+def chat_completion(
+    messages: list[dict[str, Any]],
+    temperature: float = 0.4,
+    model: str | None = None,
+) -> str:
+    """Reasoning-tier completion (settings.openai_chat_model by default).
+
+    Use this for question generation, the similarity judge, and any output a
+    user reads directly. For high-volume mechanical extraction use
+    `extraction_completion` instead — it is materially cheaper per call.
+    """
     s = get_settings()
     client = get_openai_client()
     if not client:
         raise RuntimeError("OPENAI_API_KEY is not configured")
     resp = client.chat.completions.create(
-        model=s.openai_chat_model,
+        model=model or s.openai_chat_model,
         messages=messages,
         temperature=temperature,
     )
@@ -43,3 +53,18 @@ def chat_completion(messages: list[dict[str, Any]], temperature: float = 0.4) ->
     if not choice.message.content:
         return ""
     return choice.message.content
+
+
+def extraction_completion(messages: list[dict[str, Any]], temperature: float = 0.4) -> str:
+    """Cheap-tier completion for high-volume, mechanical extraction.
+
+    Pulls structured facts out of text that is already in front of the model —
+    per-page document analysis, headline classification, field extraction,
+    reranking. Nothing here requires the reasoning tier, and per-page analysis
+    alone is one call per PDF page, so this is where ingestion cost lives.
+    """
+    return chat_completion(
+        messages,
+        temperature=temperature,
+        model=get_settings().openai_extraction_model,
+    )

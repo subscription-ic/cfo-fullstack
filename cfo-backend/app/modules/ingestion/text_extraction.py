@@ -1,4 +1,4 @@
-"""Raw text extraction from uploaded files (PDF, TXT).
+"""Raw text extraction from uploaded files (PDF, TXT, XLSX).
 
 PDF extraction tries multiple backends in order, returning text from the first
 backend that yields content:
@@ -17,6 +17,7 @@ import io
 import logging
 import os
 import shutil
+from datetime import date, datetime, time
 
 from pypdf import PdfReader
 
@@ -34,6 +35,12 @@ try:
     _HAS_OCR = True
 except ImportError:  # pragma: no cover
     _HAS_OCR = False
+
+try:
+    import openpyxl
+    _HAS_OPENPYXL = True
+except ImportError:  # pragma: no cover
+    _HAS_OPENPYXL = False
 
 
 def _locate_tesseract_binary() -> str | None:
@@ -124,7 +131,87 @@ def extract_text(file_bytes: bytes, filename: str, content_type: str | None) -> 
     if fn.endswith(".pdf") or "pdf" in ct:
         pages = extract_pdf_pages(file_bytes)
         return "\n\n".join(t for _, t in pages).strip()
-    raise ValueError(f"Unsupported file type for {filename!r} (use PDF or TXT)")
+    if is_xlsx_name(filename, content_type):
+        sheets = extract_xlsx_sheets(file_bytes)
+        return "\n\n".join(t for _, t in sheets).strip()
+    raise ValueError(f"Unsupported file type for {filename!r} (use PDF, TXT, or XLSX)")
+
+
+def is_xlsx_name(filename: str, content_type: str | None = None) -> bool:
+    """True for spreadsheet uploads. `.xls` is deliberately excluded — openpyxl
+    reads the OOXML format only, and a legacy .xls would fail deeper in the
+    pipeline with a much less obvious error."""
+    fn = (filename or "").lower()
+    ct = (content_type or "").lower()
+    return (
+        fn.endswith(".xlsx")
+        or fn.endswith(".xlsm")
+        or "spreadsheetml" in ct
+    )
+
+
+def _format_cell(value: object) -> str:
+    """Render one cell as text. Floats that are whole numbers lose the
+    trailing '.0' so '1234.0' doesn't read as a precision claim the source
+    never made."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, datetime):
+        return value.date().isoformat() if value.time() == time.min else value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value).strip()
+
+
+def extract_xlsx_sheets(file_bytes: bytes) -> list[tuple[int, str]]:
+    """Return (1-based sheet number, text) for each non-empty worksheet.
+
+    Mirrors `extract_pdf_pages` so the ingestion orchestrator can treat a
+    workbook exactly like a paginated document: one sheet becomes one "page",
+    which keeps citations (`page_number`, `citation_label`) meaningful and lets
+    per-sheet analysis run through the same `analyze_pages` path.
+
+    Cells are joined with tabs so `enrichment.is_table_like` recognises the
+    grid structure — financial supplementaries are almost entirely tables, and
+    mis-classifying them as narrative degrades chunk importance scoring.
+    """
+    if not _HAS_OPENPYXL:
+        logger.warning("openpyxl is not installed; cannot extract XLSX")
+        return []
+    try:
+        wb = openpyxl.load_workbook(
+            io.BytesIO(file_bytes),
+            data_only=True,   # computed values, not formula strings
+            read_only=True,   # streaming: large supplementaries stay bounded
+        )
+    except Exception:
+        logger.warning("openpyxl failed to open workbook", exc_info=True)
+        return []
+
+    out: list[tuple[int, str]] = []
+    try:
+        for idx, ws in enumerate(wb.worksheets, start=1):
+            lines: list[str] = []
+            for row in ws.iter_rows(values_only=True):
+                cells = [_format_cell(v) for v in row]
+                while cells and not cells[-1]:
+                    cells.pop()
+                if not cells:
+                    continue  # fully blank row
+                lines.append("\t".join(cells))
+            if not lines:
+                continue  # empty sheet — skip so it doesn't cost an LLM call
+            # Lead with the sheet name so the per-page analyzer has a real
+            # heading to lift into l1_heading, the way a PDF page banner works.
+            title = str(ws.title or f"Sheet {idx}").strip()
+            out.append((idx, f"Sheet: {title}\n\n" + "\n".join(lines)))
+    finally:
+        wb.close()
+    return out
 
 
 def extract_pdf_pages(file_bytes: bytes) -> list[tuple[int, str]]:

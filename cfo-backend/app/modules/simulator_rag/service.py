@@ -12,7 +12,12 @@ from supabase import Client
 
 logger = logging.getLogger(__name__)
 
-from app.infrastructure.llm import chat_completion, embed_query, get_openai_client
+from app.infrastructure.llm import (
+    chat_completion,
+    embed_query,
+    extraction_completion,
+    get_openai_client,
+)
 from app.shared.constants import (
     EXPERT_PERSONA,
     INDUSTRY_AWARE_DIRECTIVE,
@@ -278,7 +283,9 @@ def _llm_rerank(question: str, chunks: list[dict[str, Any]], keep: int = CONTEXT
         f"Question: {question[:1500]}\n\nExcerpts:\n{numbered}"
     )
     try:
-        raw = chat_completion([{"role": "user", "content": msg}], temperature=0.05)
+        # Cheap tier: ranking excerpts by relevance is mechanical. The answer
+        # itself (below) stays on the reasoning tier.
+        raw = extraction_completion([{"role": "user", "content": msg}], temperature=0.05)
         raw = raw.strip()
         if raw.startswith("```"):
             raw = re.sub(r"^```\w*\n?", "", raw)

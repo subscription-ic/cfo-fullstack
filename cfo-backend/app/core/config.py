@@ -48,7 +48,14 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     embedding_model: str = "text-embedding-3-small"
     embedding_dimension: int = 1536
-    openai_chat_model: str = "gpt-4o-mini"
+    # Two-tier model routing. `openai_chat_model` is the reasoning tier: question
+    # generation, the predicted-vs-actual judge, and anything a user reads
+    # directly. `openai_extraction_model` is the cheap tier for high-volume,
+    # mechanical work — chiefly per-page document analysis, which is one call per
+    # PDF page and dominates ingestion cost. Route via chat_completion() vs
+    # extraction_completion() in app.infrastructure.llm.
+    openai_chat_model: str = "gpt-4o"
+    openai_extraction_model: str = "gpt-4o-mini"
 
     storage_bucket: str = "company-docs"
 

@@ -18,7 +18,7 @@ from typing import Any
 
 import yfinance as yf
 
-from app.infrastructure.llm import chat_completion, get_openai_client
+from app.infrastructure.llm import extraction_completion, get_openai_client
 from app.modules.stock_prices.service import _quarter_to_range, resolve_ticker
 
 logger = logging.getLogger(__name__)
@@ -112,7 +112,7 @@ def _classify_batch(headlines: list[dict[str, Any]]) -> list[dict[str, Any]]:
         "Return ONLY the JSON array, no markdown fences."
     )
     try:
-        raw = chat_completion(
+        raw = extraction_completion(
             [
                 {
                     "role": "system",

@@ -16,7 +16,11 @@ from typing import Any
 
 from supabase import Client
 
-from app.infrastructure.llm import chat_completion, get_openai_client
+from app.infrastructure.llm import (
+    chat_completion,
+    extraction_completion,
+    get_openai_client,
+)
 from app.shared.constants import EXPERT_PERSONA, INDUSTRY_AWARE_DIRECTIVE
 from app.modules.analysis.schemas import (
     AnalysisResult,
@@ -91,7 +95,10 @@ def _auto_detect_company_period(chunks: list[str]) -> dict[str, Any]:
         "Return null for any field you cannot determine.\n\n"
         f"Text:\n{text}"
     )
-    raw = chat_completion(
+    # Cheap tier: pulling a company name and period off the first page is
+    # mechanical. Themes/deltas/signals and question patterns below stay on the
+    # reasoning tier.
+    raw = extraction_completion(
         [
             {
                 "role": "system",

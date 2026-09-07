@@ -17,7 +17,7 @@ from typing import Any
 
 from supabase import Client
 
-from app.infrastructure.llm import chat_completion, get_openai_client
+from app.infrastructure.llm import extraction_completion, get_openai_client
 from app.shared.constants import EXPERT_PERSONA
 from app.shared.utils import utc_now_iso
 
@@ -131,7 +131,7 @@ def extract_and_store_research_report(
                     ),
                 },
             ]
-            raw = chat_completion(messages, temperature=0.2)
+            raw = extraction_completion(messages, temperature=0.2)
             obj = _extract_json_object(raw)
             if obj:
                 firm = str(obj.get("firm") or "").strip() or fallback_firm
