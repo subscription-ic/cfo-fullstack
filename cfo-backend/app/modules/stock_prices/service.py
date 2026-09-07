@@ -33,6 +33,19 @@ _EXCHANGE_RANK = {"NSI": 0, "BSE": 1, "NMS": 2, "NYQ": 3}  # NSI = NSE on Yahoo
 # Module-level cache so repeated requests for the same company don't hammer Yahoo.
 _TICKER_CACHE: dict[str, str | None] = {}
 
+# Explicit ticker pins, keyed by lowercased company name. Checked before the
+# Yahoo search so a known listing can never be mis-resolved by name matching.
+#
+# Americana Restaurants International PLC is dual-listed on ADX (AMR) and
+# Tadawul (6015). Yahoo serves no ADX symbol for it — AMR.AD / AMR.AE / AMR.DU
+# all 404 — while the bare "AMR" is Alpha Metallurgical Resources (NYSE) and a
+# name search returns AMER3F.SA, a Brazilian retailer. Only the Tadawul symbol
+# resolves to the right security, so quotes come back in SAR, not the AED used
+# in the company's own reporting.
+_TICKER_OVERRIDES: dict[str, str] = {
+    "americana": "6015.SR",
+}
+
 
 def _quarter_to_range(fiscal_year: int, quarter: str) -> tuple[date, date]:
     """Indian fiscal-year mapping: FY26 = Apr 2025 → Mar 2026."""
@@ -55,6 +68,11 @@ def resolve_ticker(company: str) -> str | None:
     key = (company or "").strip().lower()
     if not key:
         return None
+    # Pinned listings win over name-based search, which cannot reliably
+    # distinguish similarly-named companies across exchanges.
+    override = _TICKER_OVERRIDES.get(key)
+    if override:
+        return override
     if key in _TICKER_CACHE:
         return _TICKER_CACHE[key]
 
