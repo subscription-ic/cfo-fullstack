@@ -106,3 +106,49 @@ def get_download_url(supabase: Client, document_id: str, expires_in: int = 300) 
     if not url:
         raise RuntimeError("storage did not return a signed URL")
     return {"url": url, "expires_in": expires_in}
+
+def delete_company_cascade(supabase: Client, company: str) -> dict[str, int]:
+    """Remove every trace of one company from the CURRENT schema.
+
+    Deletes, in dependency order: each document via the per-document cascade
+    (storage object, chunks, analyses, and Q&A extracted from it), then any
+    remaining predicted_qa / actual_earnings_qa / analyst_research_reports rows
+    carrying that company name.
+
+    Deliberately does NOT touch the legacy prototype tables (companies,
+    earnings_calls, predicted_questions, actual_questions) — a separate legacy
+    deployment still reads those.
+
+    Matching is exact on the company name, not a LIKE, so "HDFC" never takes
+    "HDFC Bank" with it. Returns per-table counts of what was removed.
+    """
+    name = (company or "").strip()
+    if not name:
+        raise ValueError("company name is required")
+
+    counts = {"documents": 0, "predicted_qa": 0, "actual_earnings_qa": 0,
+              "analyst_research_reports": 0}
+
+    repo = DocumentsRepository(supabase)
+    try:
+        rows = (
+            supabase.table("documents").select("id").eq("company", name).execute()
+        ).data or []
+    except Exception:
+        rows = []
+    for row in rows:
+        try:
+            delete_document_cascade(supabase, row["id"])
+            counts["documents"] += 1
+        except Exception:
+            # survive one bad document so the rest still clears
+            continue
+
+    for table in ("predicted_qa", "actual_earnings_qa", "analyst_research_reports"):
+        try:
+            res = supabase.table(table).delete().eq("company", name).execute()
+            counts[table] = len(res.data or [])
+        except Exception:
+            pass
+
+    return counts

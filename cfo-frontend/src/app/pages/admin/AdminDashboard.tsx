@@ -65,6 +65,7 @@ import {
   getAccessToken,
   uploadDocuments,
   deleteDocument,
+  deleteCompany,
   deleteQuarter,
   fetchDocumentCatalog,
   runQuestionGeneration,
@@ -420,6 +421,10 @@ export default function AdminDashboard() {
 
   const [companyName, setCompanyName] = useState("");
   const [newCompanyInput, setNewCompanyInput] = useState("");
+  // Company deletion — destructive, so the name must be typed to confirm.
+  const [deleteCompanyOpen, setDeleteCompanyOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingCompany, setDeletingCompany] = useState(false);
   const [deletingQuarter, setDeletingQuarter] = useState<string | null>(null);
   const [uploadDocTab, setUploadDocTab] = useState<"historical" | "current">("current");
 
@@ -476,6 +481,37 @@ export default function AdminDashboard() {
   // Company list is backend-driven (distinct companies that have documents/Q&A).
   // The currently-typed name is unioned in so a brand-new company is selectable
   // as the upload target before its first document is persisted.
+  /** Delete the selected company and everything recorded against it.
+   *  Guarded by an exact-name confirmation in the dialog below. */
+  const handleDeleteCompany = async () => {
+    const target = companyName.trim();
+    const token = getAccessToken();
+    if (!target || !token) return;
+    setDeletingCompany(true);
+    try {
+      const res = await deleteCompany(target, token);
+      toast.success(`Deleted ${target}`, {
+        description:
+          `${res.documents} document(s), ${res.predicted_qa} predicted, ` +
+          `${res.actual_earnings_qa} actual Q&A, ${res.analyst_research_reports} research report(s) removed.`,
+      });
+      setCompanyPicker((prev) => prev.filter((c) => c.trim() !== target));
+      setCompanyName("");
+      setDeleteCompanyOpen(false);
+      setDeleteConfirmText("");
+      // drop the deleted company's rows from the catalogue already in memory
+      setDocumentsCatalog((prev) =>
+        prev.filter((d) => (d.company || "").trim() !== target),
+      );
+    } catch (err) {
+      toast.error("Delete failed", {
+        description: err instanceof Error ? err.message.slice(0, 160) : "Company was not deleted.",
+      });
+    } finally {
+      setDeletingCompany(false);
+    }
+  };
+
   const companyOptions = useMemo(() => {
     const set = new Set<string>();
     for (const c of companyPicker) {
@@ -1683,6 +1719,35 @@ export default function AdminDashboard() {
                     </Button>
                   </div>
                 </div>
+
+                {/* Destructive: removes the company and everything recorded
+                    against it. Admin panel only. */}
+                <div className="pt-4 border-t border-slate-200">
+                  <Label className="text-slate-700">Danger zone</Label>
+                  <p className="text-sm text-slate-500 mt-1 mb-3">
+                    Permanently delete the selected company and all of its documents,
+                    predicted questions, actual Q&amp;A and research reports. This cannot
+                    be undone.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!companyName.trim()}
+                    onClick={() => {
+                      setDeleteConfirmText("");
+                      setDeleteCompanyOpen(true);
+                    }}
+                    className="border-[#a01419] text-[#a01419] hover:bg-[#a01419] hover:text-white cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1.5" />
+                    Delete {companyName.trim() || "company"}
+                  </Button>
+                  {!companyName.trim() && (
+                    <p className="text-xs text-slate-400 mt-2">
+                      Select a company above to enable deletion.
+                    </p>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
@@ -1895,7 +1960,7 @@ export default function AdminDashboard() {
                         type="file"
                         id="upload-current-docs"
                         multiple
-                        accept=".pdf,.txt"
+                        accept=".pdf,.txt,.xlsx"
                         className="hidden"
                         onChange={(e) =>
                           handleFileUpload(
@@ -2056,6 +2121,85 @@ export default function AdminDashboard() {
           />
         </TabsContent> */}
       </Tabs>
+
+      {/* Type-to-confirm gate: the company name must match exactly before the
+          destructive action is enabled. */}
+      <Dialog
+        open={deleteCompanyOpen}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeleteCompanyOpen(false);
+            setDeleteConfirmText("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-[#a01419]">
+              Delete {companyName.trim()}?
+            </DialogTitle>
+            <DialogDescription>
+              This permanently removes the company and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-slate-600">
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <strong className="text-slate-900">
+                  {documentsCatalog.filter(
+                    (d) => (d.company || "").trim() === companyName.trim(),
+                  ).length}
+                </strong>{" "}
+                uploaded document(s), including stored files, text chunks and embeddings
+              </li>
+              <li>all predicted questions for this company</li>
+              <li>all actual earnings Q&amp;A, and their links to predictions</li>
+              <li>all analyst research reports</li>
+            </ul>
+            <p className="text-slate-500">
+              Other companies are unaffected. Legacy prototype tables are not touched.
+            </p>
+            <div className="pt-1">
+              <Label htmlFor="confirm-company" className="text-slate-700">
+                Type <strong className="text-slate-900">{companyName.trim()}</strong> to confirm
+              </Label>
+              <Input
+                id="confirm-company"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder={companyName.trim()}
+                autoComplete="off"
+                className="mt-1.5 focus:border-[#a01419] focus:ring-[#a01419]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deletingCompany}
+              onClick={() => {
+                setDeleteCompanyOpen(false);
+                setDeleteConfirmText("");
+              }}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                deletingCompany || deleteConfirmText.trim() !== companyName.trim()
+              }
+              onClick={handleDeleteCompany}
+              className="bg-[#a01419] hover:bg-[#5a1416] text-white cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4 mr-1.5" />
+              {deletingCompany ? "Deleting…" : "Delete company"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

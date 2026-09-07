@@ -171,6 +171,22 @@ export interface DocumentCatalogRow {
   updated_at: string;
 }
 
+/** Delete a company and every record against it. Destructive and
+ *  irreversible; requires Bearer token. Legacy prototype tables untouched. */
+export async function deleteCompany(
+  company: string,
+  token: string
+): Promise<{ documents: number; predicted_qa: number; actual_earnings_qa: number; analyst_research_reports: number }> {
+  const res = await fetch(`${BASE_URL}/api/companies/${encodeURIComponent(company)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Delete company failed (${res.status}): ${await res.text()}`);
+  }
+  return res.json();
+}
+
 /** Ingested documents (admin); requires Bearer token. */
 export async function fetchDocumentCatalog(
   token: string

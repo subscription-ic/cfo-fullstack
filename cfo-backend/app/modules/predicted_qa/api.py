@@ -2,7 +2,8 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.core.dependencies import SupabaseDep
+from app.core.dependencies import CurrentUserDep, SupabaseDep
+from app.modules.documents import service as documents_service
 from app.modules.predicted_qa import service as predicted_qa_service
 
 router = APIRouter()
@@ -40,3 +41,19 @@ def get_predicted_question(supabase: SupabaseDep, question_id: str):
 def get_companies(supabase: SupabaseDep):
     """Distinct company names from predicted_qa, actual_earnings_qa, and documents."""
     return {"companies": predicted_qa_service.list_known_companies(supabase)}
+
+@router.delete("/companies/{company}")
+def delete_company(
+    _user: CurrentUserDep,
+    supabase: SupabaseDep,
+    company: str,
+):
+    """Delete a company and everything recorded against it. Destructive and
+    irreversible; requires authentication. Legacy prototype tables untouched."""
+    try:
+        return documents_service.delete_company_cascade(supabase, company)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
