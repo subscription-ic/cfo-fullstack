@@ -60,6 +60,19 @@ function parseTargetPrice(s: string): number {
   return Number(s.replace(/[^\d.]/g, '')) || 0;
 }
 
+// Target prices arrive as display strings already carrying the currency the
+// analyst quoted — "AED2.50" for Americana's UAE coverage, "₹1,100" / "Rs975"
+// for Indian names. Read it back off the string rather than assuming a
+// currency, so each company shows what its own analysts actually published.
+function parseCurrency(s: string): string {
+  const m = (s || '').match(/^[^\d]+/);
+  const raw = m ? m[0].trim() : '';
+  // Indian reports quote the rupee inconsistently ("INR", "Rs", "₹"); fold
+  // those onto the symbol so existing coverage renders exactly as before and
+  // only genuinely different currencies (AED) show a new unit.
+  return /^(inr|rs\.?)$/i.test(raw) ? '₹' : raw;
+}
+
 function isoWeekStart(d: Date): Date {
   const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const day = date.getUTCDay() || 7;
@@ -726,6 +739,7 @@ export default function PostCallAnalysis() {
         avgTarget: 0,
         minTarget: 0,
         maxTarget: 0,
+        currency: '',
         ratingCounts: {} as Record<string, number>,
         positiveCount: 0,
         total: 0,
@@ -734,9 +748,13 @@ export default function PostCallAnalysis() {
     }
     const targets = reports.map((r) => parseTargetPrice(r.targetPrice));
     const total = reports.length;
-    const avgTarget = Math.round(targets.reduce((s, t) => s + t, 0) / total);
+    // Deliberately unrounded: targets quoted in AED sit near 2.50-3.15, where
+    // rounding to whole units collapses the whole range to a single figure.
+    const avgTarget = targets.reduce((s, t) => s + t, 0) / total;
     const minTarget = Math.min(...targets);
     const maxTarget = Math.max(...targets);
+    const currency =
+      reports.map((r) => parseCurrency(r.targetPrice)).find((c) => c) ?? '';
     const ratingCounts = reports.reduce((acc, r) => {
       acc[r.rating] = (acc[r.rating] || 0) + 1;
       return acc;
@@ -745,7 +763,7 @@ export default function PostCallAnalysis() {
     const ratingMixLabel = Object.entries(ratingCounts)
       .map(([k, v]) => `${v} ${k}`)
       .join(' · ');
-    return { avgTarget, minTarget, maxTarget, ratingCounts, positiveCount, total, ratingMixLabel };
+    return { avgTarget, minTarget, maxTarget, currency, ratingCounts, positiveCount, total, ratingMixLabel };
   }, [activeResearchReports]);
 
   // Aggregates derived from whichever Sentiment Analysis table is active.
@@ -853,7 +871,19 @@ export default function PostCallAnalysis() {
     return bullets;
   }, [activeSentimentData, activeResearchReports, sentimentStats]);
 
-  const fmtINR = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+  // Formats a target price in whatever currency the covering analysts used.
+  // An alphabetic code ("AED") takes a space; a symbol ("₹") sits flush.
+  // Sub-100 values keep two decimals so an AED 2.50-3.15 spread stays legible
+  // instead of collapsing to "3 - 3"; larger INR figures stay whole.
+  const fmtINR = (n: number) => {
+    const unit = reportStats.currency || '₹';
+    const gap = /^[A-Za-z]{2,}$/.test(unit) ? ' ' : '';
+    const dp = reportStats.maxTarget > 0 && reportStats.maxTarget < 100 ? 2 : 0;
+    return `${unit}${gap}${n.toLocaleString('en-IN', {
+      minimumFractionDigits: dp,
+      maximumFractionDigits: dp,
+    })}`;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
