@@ -254,9 +254,35 @@ def _coerce_str_list(raw: Any, limit: int) -> list[str]:
     return out
 
 
+def _flatten_sections(obj: dict) -> dict:
+    """Merge one level of nested section objects into a flat lookup.
+
+    The system prompt lays its fields out under visual section headers
+    (OVERVIEW, DOCUMENT STRUCTURE, TAXONOMY (MANDATORY), ANALYST SIGNAL
+    EXTRACTION). Some models mirror that layout in their JSON, nesting the
+    real fields one level down, which left every extracted field empty while
+    the call itself looked successful.
+
+    Top-level keys win; nested values only fill gaps, so a flat response
+    parses exactly as it did before. Section names are never assumed — any
+    dict-valued key is treated as a section, so a renamed or reordered
+    heading still resolves.
+    """
+    flat: dict[str, Any] = {}
+    for value in obj.values():
+        if isinstance(value, dict):
+            for sub_key, sub_value in value.items():
+                flat.setdefault(sub_key, sub_value)
+    for key, value in obj.items():
+        if not isinstance(value, dict):
+            flat[key] = value
+    return flat
+
+
 def _coerce_analysis(obj: dict | None) -> PageAnalysis:
     if not isinstance(obj, dict):
         return PageAnalysis()
+    obj = _flatten_sections(obj)
     return PageAnalysis(
         summary=str(obj.get("summary") or "").strip(),
         primary_theme=str(obj.get("primary_theme") or "").strip(),
