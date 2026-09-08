@@ -179,7 +179,7 @@ def fetch_news_sentiment(
         }
 
     try:
-        start, end = _quarter_to_range(fiscal_year, quarter)
+        start, end = _quarter_to_range(fiscal_year, quarter, company)
     except ValueError as exc:
         return {
             "company": company,

@@ -47,9 +47,37 @@ _TICKER_OVERRIDES: dict[str, str] = {
 }
 
 
-def _quarter_to_range(fiscal_year: int, quarter: str) -> tuple[date, date]:
-    """Indian fiscal-year mapping: FY26 = Apr 2025 → Mar 2026."""
+# Companies whose fiscal year runs January-December rather than the Indian
+# April-March default. Americana Restaurants reports on the calendar year --
+# its Q1 FY2026 results were published in early May 2026 and Q4 FY2025 in
+# February 2026 -- so applying the Indian mapping put every price window three
+# quarters early. Keyed by lowercased company name, matching _TICKER_OVERRIDES.
+_CALENDAR_FISCAL_YEAR: set[str] = {
+    "americana",
+}
+
+
+def _quarter_to_range(
+    fiscal_year: int, quarter: str, company: str | None = None
+) -> tuple[date, date]:
+    """Calendar range for a fiscal quarter.
+
+    Defaults to the Indian mapping (FY26 = Apr 2025 → Mar 2026), which is right
+    for the Indian names. Companies listed in _CALENDAR_FISCAL_YEAR report on
+    the calendar year instead, so FY26 Q1 is Jan-Mar 2026. Omitting `company`
+    preserves the original behaviour for every existing caller.
+    """
     q = (quarter or "").strip().upper()
+    if (company or "").strip().lower() in _CALENDAR_FISCAL_YEAR:
+        if q == "Q1":
+            return date(fiscal_year, 1, 1), date(fiscal_year, 3, 31)
+        if q == "Q2":
+            return date(fiscal_year, 4, 1), date(fiscal_year, 6, 30)
+        if q == "Q3":
+            return date(fiscal_year, 7, 1), date(fiscal_year, 9, 30)
+        if q == "Q4":
+            return date(fiscal_year, 10, 1), date(fiscal_year, 12, 31)
+        raise ValueError(f"Unknown quarter '{quarter}' (expected Q1/Q2/Q3/Q4)")
     cal_start_year = fiscal_year - 1  # FY26 starts in 2025
     if q == "Q1":
         return date(cal_start_year, 4, 1), date(cal_start_year, 6, 30)
@@ -265,7 +293,7 @@ def fetch_quarter_prices(
         }
 
     try:
-        start, end = _quarter_to_range(fiscal_year, quarter)
+        start, end = _quarter_to_range(fiscal_year, quarter, company)
     except ValueError as exc:
         return {
             "company": company,
