@@ -81,6 +81,7 @@ import {
   type ActualEarningsQARow,
   type PredictedQA,
 } from "../../utils/api";
+import { FiscalPeriodBadge } from "../../components/FiscalPeriodBadge";
 // import AnalysisPanel from "./AnalysisPanel";
 
 interface UploadedFile {
@@ -854,6 +855,11 @@ export default function AdminDashboard() {
                   </option>
                 ))}
               </select>
+              <FiscalPeriodBadge
+                company={companyName}
+                fiscalYear={fileObj.year}
+                quarter={fileObj.quarter}
+              />
               <select
                 value={fileObj.documentType}
                 onChange={(e) =>
@@ -1311,22 +1317,31 @@ export default function AdminDashboard() {
                     )}
                   </p>
                   {predictedQuarters.length > 0 && (
-                    <Select
-                      value={predictedQuarterFilter}
-                      onValueChange={setPredictedQuarterFilter}
-                    >
-                      <SelectTrigger className="w-48">
-                        <SelectValue placeholder="All quarters" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All quarters</SelectItem>
-                        {predictedQuarters.map((q) => (
-                          <SelectItem key={q} value={q}>
-                            {q}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={predictedQuarterFilter}
+                        onValueChange={setPredictedQuarterFilter}
+                      >
+                        <SelectTrigger className="w-48">
+                          <SelectValue placeholder="All quarters" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All quarters</SelectItem>
+                          {predictedQuarters.map((q) => (
+                            <SelectItem key={q} value={q}>
+                              {q}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {predictedQuarterFilter !== "all" && (
+                        <FiscalPeriodBadge
+                          company={reviewCompany}
+                          quarter={predictedQuarterFilter.split(" ")[0]}
+                          fiscalYear={predictedQuarterFilter.split(" ")[1]}
+                        />
+                      )}
+                    </div>
                   )}
                 </div>
 

@@ -22,6 +22,7 @@ import {
   type PredictedQA,
 } from '../utils/api';
 import { AnswerWithCitationLinks } from '../components/AnswerWithCitationLinks';
+import { FiscalPeriodBadge } from '../components/FiscalPeriodBadge';
 
 interface QuestionItem {
   id: string;
@@ -526,6 +527,11 @@ export default function EarningsCallStrategist() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <FiscalPeriodBadge
+                      company={selectedCompany}
+                      fiscalYear={selectedFiscalYear}
+                      quarter={selectedQuarter}
+                    />
                   </>
                 )}
               </div>

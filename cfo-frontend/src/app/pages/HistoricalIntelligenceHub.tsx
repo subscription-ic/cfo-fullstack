@@ -57,6 +57,7 @@ import {
   type QuarterDetailResponse,
   type DocumentCatalogRow,
 } from "../utils/api";
+import { FiscalPeriodBadge } from "../components/FiscalPeriodBadge";
 
 interface ChatMessage {
   id: number;
@@ -395,6 +396,11 @@ export default function HistoricalIntelligenceHub() {
                     })}
                   </SelectContent>
                 </Select>
+                <FiscalPeriodBadge
+                  company={selectedCompany}
+                  quarter={selectedQuarterKey.split("|")[0]}
+                  fiscalYear={selectedQuarterKey.split("|")[1]}
+                />
               </div>
               <Button
                 onClick={handleApply}

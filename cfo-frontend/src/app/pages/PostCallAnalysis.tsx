@@ -49,6 +49,7 @@ import {
   type StockQuarterPricesResponse,
   type NewsSentimentResponse,
 } from '../utils/api';
+import { FiscalPeriodBadge } from '../components/FiscalPeriodBadge';
 
 function kpiValueClass(tone: 'positive' | 'neutral' | 'negative'): string {
   if (tone === 'positive') return 'text-green-700';
@@ -948,6 +949,11 @@ export default function PostCallAnalysis() {
                   )}
                 </SelectContent>
               </Select>
+              <FiscalPeriodBadge
+                company={selectedCompany}
+                quarter={selectedQuarterKey.split('|')[0]}
+                fiscalYear={selectedQuarterKey.split('|')[1]}
+              />
             </div>
             {detailLoading && (
               <span className="text-xs text-slate-500 flex items-center gap-2">

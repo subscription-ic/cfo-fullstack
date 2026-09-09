@@ -41,6 +41,7 @@ import {
   AlertDialogTitle,
 } from '../components/ui/alert-dialog';
 import { toast } from 'sonner';
+import { FiscalPeriodBadge } from '../components/FiscalPeriodBadge';
 
 const ALL = '__all__';
 
@@ -310,7 +311,16 @@ export default function CompanyDetails() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {d.quarter} FY{String(d.fiscal_year).slice(-2)}
+                            <div className="flex flex-col items-start gap-1">
+                              <span>
+                                {d.quarter} FY{String(d.fiscal_year).slice(-2)}
+                              </span>
+                              <FiscalPeriodBadge
+                                company={d.company}
+                                quarter={d.quarter}
+                                fiscalYear={d.fiscal_year}
+                              />
+                            </div>
                           </TableCell>
                           <TableCell className="text-slate-600">
                             {new Date(d.created_at).toLocaleDateString()}

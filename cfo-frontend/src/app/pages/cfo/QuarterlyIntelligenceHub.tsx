@@ -9,7 +9,8 @@ import {
   TrendingUp, TrendingDown, FileText, Sparkles, ArrowRight,
   AlertCircle, CheckCircle2, Target
 } from 'lucide-react';
-import { historicalQuarters, historicalQuestions, earningsReadinessMetrics, analystPersonas, peerBenchmarks } from '../../data/mockData';
+import { historicalQuarters, historicalQuestions, earningsReadinessMetrics, analystPersonas, peerBenchmarks, companyInfo } from '../../data/mockData';
+import { FiscalPeriodBadge } from '../../components/FiscalPeriodBadge';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { toast } from 'sonner';
 import { downloadHTMLFile, generatePrepPackDocument } from '../../utils/downloadHelpers';
@@ -86,18 +87,25 @@ export default function QuarterlyIntelligenceHub() {
         <CardHeader className="bg-gradient-to-r from-[#f5d4d4] to-white border-b border-[#d4dce6]">
           <div className="flex items-center justify-between">
             <CardTitle className="text-[#002850] text-2xl">Historical Quarter Analysis</CardTitle>
-            <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
-              <SelectTrigger className="w-56 border-[#a01419]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {historicalQuarters.map(q => (
-                  <SelectItem key={`${q.quarter}-${q.fiscalYear}`} value={`${q.quarter} ${q.fiscalYear}`}>
-                    {q.quarter} {q.fiscalYear}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+                <SelectTrigger className="w-56 border-[#a01419]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {historicalQuarters.map(q => (
+                    <SelectItem key={`${q.quarter}-${q.fiscalYear}`} value={`${q.quarter} ${q.fiscalYear}`}>
+                      {q.quarter} {q.fiscalYear}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FiscalPeriodBadge
+                company={companyInfo.name}
+                quarter={selectedQuarter.split(' ')[0]}
+                fiscalYear={selectedQuarter.split(' ')[1]}
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-6">

@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { toast } from 'sonner';
 import { downloadHTMLFile, downloadCSVFile, generateLearningReport, generateTrainingData } from '../../utils/downloadHelpers';
+import { FiscalPeriodBadge } from '../../components/FiscalPeriodBadge';
 
 // Research-report + sentiment-analysis data and rendering have been
 // relocated to the Post-Call Analysis module.
@@ -843,6 +844,11 @@ export default function PredictionVsActual() {
               )}
             </SelectContent>
           </Select>
+          <FiscalPeriodBadge
+            company={selectedCompany}
+            quarter={selectedQuarter.split(' ')[0]}
+            fiscalYear={selectedQuarter.split(' ')[1]}
+          />
           <Button
             variant="outline"
             onClick={handleExportReport}
