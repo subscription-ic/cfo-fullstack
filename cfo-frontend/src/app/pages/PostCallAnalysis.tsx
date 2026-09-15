@@ -69,9 +69,28 @@ function parseCurrency(s: string): string {
   const m = (s || '').match(/^[^\d]+/);
   const raw = m ? m[0].trim() : '';
   // Indian reports quote the rupee inconsistently ("INR", "Rs", "₹"); fold
-  // those onto the symbol so existing coverage renders exactly as before and
-  // only genuinely different currencies (AED) show a new unit.
+  // those onto the symbol so existing coverage renders exactly as before.
   return /^(inr|rs\.?)$/i.test(raw) ? '₹' : raw;
+}
+
+// UAE analysts publish Americana targets in dirhams, but the price chart can
+// only be sourced from the Tadawul listing, which quotes riyals. Restating the
+// targets in SAR puts the whole Post-Call page in one unit without touching the
+// price series, which stays exactly as Tadawul reported it.
+//
+// Both currencies are pegged to the dollar (AED 3.6725, SAR 3.75), so this is a
+// fixed cross-rate rather than a market quote. Verify the pegs still hold before
+// relying on these figures for anything external.
+const AED_PER_USD = 3.6725;
+const SAR_PER_USD = 3.75;
+const AED_TO_SAR = SAR_PER_USD / AED_PER_USD;
+
+function restateTargetCurrency(display: string): string {
+  if (!display) return display;
+  if (parseCurrency(display).toUpperCase() !== 'AED') return display;
+  const n = parseTargetPrice(display);
+  if (!n) return display;
+  return `SAR${(n * AED_TO_SAR).toFixed(2)}`;
 }
 
 function isoWeekStart(d: Date): Date {
@@ -563,7 +582,7 @@ export default function PostCallAnalysis() {
             firm: r.firm,
             rating: r.rating ?? '—',
             ratingTone: r.rating_tone,
-            targetPrice: r.target_price_display ?? '—',
+            targetPrice: restateTargetCurrency(r.target_price_display ?? '—'),
             summary: r.summary ?? '',
           })),
         );
