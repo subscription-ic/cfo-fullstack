@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { fetchCompanies, fetchDocumentCatalog, getAccessToken } from '../utils/api';
+import { fetchDocumentCatalog, getAccessToken } from '../utils/api';
 
 /* Top navigation. Unicode glyphs follow the Acuvon booklet's iconography set
    (section 11). Each entry routes to the same page as its module card. */
@@ -28,7 +28,7 @@ const MODULES: ModuleCard[] = [
     glyph: '▣',
     title: 'Company Details',
     description: 'Manage companies and the documents uploaded for them',
-    // filled in at render time from /api/companies and /documents
+    // filled in at render time from /documents
     bullets: [],
     cta: 'View Details',
     path: '/company-details',
@@ -79,16 +79,12 @@ export default function Dashboard() {
   const location = useLocation();
   const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
-  // Live figures for the Company Details card. Both calls are read-only and
+  // Live figure for the Company Details card. The call is read-only and
   // failures fall back to a static bullet list rather than breaking the card.
-  const [companies, setCompanies] = useState<string[] | null>(null);
   const [docCount, setDocCount] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchCompanies()
-      .then((c) => !cancelled && setCompanies(c))
-      .catch(() => !cancelled && setCompanies([]));
     const token = getAccessToken();
     if (token) {
       fetchDocumentCatalog(token)
@@ -101,11 +97,7 @@ export default function Dashboard() {
   }, []);
 
   const companyBullets = (): string[] => {
-    const names = companies ?? [];
-    const first = names.length ? names[0] : 'No company yet';
-    const more = names.length > 1 ? ` +${names.length - 1} more` : '';
     return [
-      `${first}${more}`,
       docCount === null ? 'Documents uploaded' : `${docCount} document${docCount === 1 ? '' : 's'} uploaded`,
       'Documents by period & type',
       'Q&A coverage per company',
