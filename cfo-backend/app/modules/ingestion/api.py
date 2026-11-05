@@ -12,8 +12,10 @@ from app.modules.ingestion.service import parse_metadata_json
 router = APIRouter()
 
 
+# Plain def on purpose: ingestion is slow, blocking work, so FastAPI must run it in
+# its threadpool. As async def it would freeze every other request until it finished.
 @router.post("/upload", response_model=UploadResponse)
-async def upload_documents(
+def upload_documents(
     _user: CurrentUserDep,
     supabase: SupabaseDep,
     background_tasks: BackgroundTasks,

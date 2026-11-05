@@ -66,15 +66,18 @@ export default function CompanyDetails() {
     setLoading(true);
     const token = getAccessToken();
     Promise.all([
-      fetchCompanies().catch(() => [] as string[]),
-      token ? fetchDocumentCatalog(token).catch(() => [] as DocumentCatalogRow[]) : Promise.resolve([]),
+      fetchCompanies().catch(() => null),
+      token ? fetchDocumentCatalog(token).catch(() => null) : Promise.resolve([] as DocumentCatalogRow[]),
     ])
       .then(([names, rows]) => {
         if (cancelled) return;
-        setCompanies(names);
-        setDocs(rows);
-        setSelectedCompany((prev) => prev || names[0] || '');
+        setCompanies(names ?? []);
+        setDocs(rows ?? []);
+        setSelectedCompany((prev) => prev || names?.[0] || '');
         if (!token) setError('Sign in again to load the document list.');
+        else if (names === null || rows === null) {
+          setError('Could not load all company data. Refresh the page or sign in again.');
+        }
       })
       .finally(() => !cancelled && setLoading(false));
     return () => {

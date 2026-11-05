@@ -2,6 +2,8 @@
  * API service for CFO Earnings Intelligence backend (FastAPI).
  */
 
+import { fetchWhileServerWakes } from "./serverWake";
+
 const BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.toString().trim() ||
   "http://localhost:8000";
@@ -39,7 +41,7 @@ export interface PredictedQAResponse {
 }
 
 export async function login(username: string, password: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/login`, {
+  const res = await fetchWhileServerWakes(`${BASE_URL}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
@@ -128,7 +130,7 @@ export async function fetchPredictedQuestions(
 }
 
 export async function fetchCompanies(): Promise<string[]> {
-  const res = await fetch(`${BASE_URL}/api/companies`);
+  const res = await fetchWhileServerWakes(`${BASE_URL}/api/companies`);
   if (!res.ok) {
     throw new Error(`API error ${res.status}: ${await res.text()}`);
   }
@@ -191,7 +193,7 @@ export async function deleteCompany(
 export async function fetchDocumentCatalog(
   token: string
 ): Promise<DocumentCatalogRow[]> {
-  const res = await fetch(`${BASE_URL}/documents`, {
+  const res = await fetchWhileServerWakes(`${BASE_URL}/documents`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
